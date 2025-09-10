@@ -1,0 +1,176 @@
+name: Manual Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 0.1.1). If not provided, uses version from build.zig.zon'
+        required: false
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  manual-release:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - uses: goto-bus-stop/setup-zig@v2
+      with:
+        version: 0.15.1
+
+    - name: Determine version
+      id: version
+      run: |
+        if [ -n "${{ github.event.inputs.version }}" ]; then
+          VERSION="${{ github.event.inputs.version }}"
+          echo "Using manually specified version: $VERSION"
+          
+          # Update build.zig.zon with the new version
+          sed -i "s/\.version = \"[^\"]*\"/\.version = \"$VERSION\"/" build.zig.zon
+          echo "Updated build.zig.zon with version $VERSION"
+        else
+          VERSION=$(grep -E '^\s*\.version\s*=' build.zig.zon | sed 's/.*"\([^"]*\)".*/\1/')
+          echo "Using version from build.zig.zon: $VERSION"
+        fi
+        
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        
+        # Check if tag already exists
+        if git tag -l | grep -q "^v$VERSION$"; then
+          echo "❌ Tag v$VERSION already exists!"
+          exit 1
+        fi
+
+    - name: Install Lua
+      run: sudo apt-get update && sudo apt-get install -y lua5.3
+
+    - name: Run validation tests
+      run: |
+        echo "🧪 Running comprehensive validation for release..."
+        zig build test
+        zig build bench-realistic
+        echo "✅ All validation tests passed"
+
+    - name: Build release artifacts
+      run: |
+        echo "🔨 Building release artifacts..."
+        
+        # Build for multiple targets
+        targets=("x86_64-linux" "aarch64-linux" "x86_64-macos" "aarch64-macos" "x86_64-windows")
+        
+        mkdir -p release-artifacts
+        
+        for target in "${targets[@]}"; do
+          echo "Building for $target..."
+          zig build -Doptimize=ReleaseFast -Dtarget=$target
+          
+          if [[ "$target" == *"windows"* ]]; then
+            artifact_name="rgcidr-${target}.exe"
+            cp zig-out/bin/rgcidr.exe "release-artifacts/$artifact_name"
+          else
+            artifact_name="rgcidr-${target}"
+            cp zig-out/bin/rgcidr "release-artifacts/$artifact_name"
+          fi
+          
+          echo "✅ Built $artifact_name"
+        done
+
+    - name: Commit version change (if any)
+      if: github.event.inputs.version != ''
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add build.zig.zon
+        git commit -m "Release v${{ steps.version.outputs.version }}" || echo "No changes to commit"
+
+    - name: Create and push tag
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        git tag -a "v$VERSION" -m "Release v$VERSION"
+        git push origin "v$VERSION"
+
+    - name: Generate release notes
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        
+        # Get commits since last tag
+        LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+        if [ -n "$LAST_TAG" ]; then
+          COMMITS=$(git log ${LAST_TAG}..HEAD^ --pretty=format:"- %s" --no-merges)
+        else
+          COMMITS=$(git log --pretty=format:"- %s" --no-merges -10 HEAD^)
+        fi
+        
+        cat > release_notes.md << EOF
+        # rgcidr v$VERSION
+        
+        A high-performance Zig library and CLI tool for filtering IPv4 and IPv6 addresses against CIDR patterns.
+        
+        ## 🚀 Features
+        - ⚡ Fast performance within 1.1x of the C implementation  
+        - 🔍 Available as both library and CLI tool
+        - 🌐 Full IPv4 and IPv6 support with all notation formats
+        - 📦 Zero dependencies - pure Zig implementation
+        - 🎯 Pattern matching for single IPs, CIDR ranges, and IP ranges
+        
+        ## 📥 Installation
+        
+        ### Pre-built Binaries
+        Download the appropriate binary for your platform from the assets below:
+        - **Linux**: \`rgcidr-x86_64-linux\` or \`rgcidr-aarch64-linux\`
+        - **macOS**: \`rgcidr-x86_64-macos\` or \`rgcidr-aarch64-macos\`
+        - **Windows**: \`rgcidr-x86_64-windows.exe\`
+        
+        ### Build from Source
+        \`\`\`bash
+        git clone https://github.com/${{ github.repository }}
+        cd rgcidr
+        zig build -Doptimize=ReleaseFast
+        \`\`\`
+        
+        ### Use as Zig Library
+        Add to your \`build.zig.zon\`:
+        \`\`\`zig
+        .dependencies = .{
+            .rgcidr = .{
+                .url = "https://github.com/${{ github.repository }}/archive/refs/tags/v$VERSION.tar.gz",
+                .hash = "...", // Use \`zig fetch --save\` to get the hash
+            },
+        },
+        \`\`\`
+        
+        ## 📋 Changes in this release
+        $COMMITS
+        
+        ## 📖 Documentation
+        - [README.md](https://github.com/${{ github.repository }}/blob/v$VERSION/README.md) - Complete usage guide
+        - [API Documentation](https://github.com/${{ github.repository }}/blob/v$VERSION/src/root.zig) - Library API reference
+        - [Architecture Guide](https://github.com/${{ github.repository }}/blob/v$VERSION/docs/ARCHITECTURE.md) - Technical details
+        
+        ## ⚙️ Requirements
+        - Zig 0.15.1 or later (for building from source)
+        - No runtime dependencies
+        EOF
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ steps.version.outputs.version }}
+        name: rgcidr v${{ steps.version.outputs.version }}
+        body_path: release_notes.md
+        draft: false
+        prerelease: ${{ github.event.inputs.prerelease == 'true' }}
+        files: release-artifacts/*
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Push version commit (if any)
+      if: github.event.inputs.version != ''
+      run: |
+        git push origin main

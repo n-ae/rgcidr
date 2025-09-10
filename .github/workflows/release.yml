@@ -1,0 +1,200 @@
+name: Release
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      should-release: ${{ steps.version.outputs.should-release }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Extract version from build.zig.zon
+      id: version
+      run: |
+        # Extract version from build.zig.zon
+        VERSION=$(grep -E '^\s*\.version\s*=' build.zig.zon | sed 's/.*"\([^"]*\)".*/\1/')
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Current version: $VERSION"
+        
+        # Check if this version already has a release/tag
+        if git tag -l | grep -q "^v$VERSION$"; then
+          echo "Tag v$VERSION already exists, skipping release"
+          echo "should-release=false" >> $GITHUB_OUTPUT
+        else
+          echo "Tag v$VERSION does not exist, will create release"
+          echo "should-release=true" >> $GITHUB_OUTPUT
+        fi
+
+  build-artifacts:
+    needs: check-version
+    if: needs.check-version.outputs.should-release == 'true'
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-linux
+            artifact: rgcidr-linux-x86_64
+          - os: ubuntu-latest
+            target: aarch64-linux
+            artifact: rgcidr-linux-aarch64
+          - os: macos-latest
+            target: x86_64-macos
+            artifact: rgcidr-macos-x86_64
+          - os: macos-latest
+            target: aarch64-macos
+            artifact: rgcidr-macos-aarch64
+          - os: windows-latest
+            target: x86_64-windows
+            artifact: rgcidr-windows-x86_64.exe
+
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: goto-bus-stop/setup-zig@v2
+      with:
+        version: 0.15.1
+
+    - name: Build release binary
+      run: |
+        zig build -Doptimize=ReleaseFast -Dtarget=${{ matrix.target }}
+
+    - name: Prepare artifact
+      shell: bash
+      run: |
+        if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+          cp zig-out/bin/rgcidr.exe ${{ matrix.artifact }}
+        else
+          cp zig-out/bin/rgcidr ${{ matrix.artifact }}
+        fi
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.artifact }}
+        path: ${{ matrix.artifact }}
+
+  create-release:
+    needs: [check-version, build-artifacts]
+    if: needs.check-version.outputs.should-release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: goto-bus-stop/setup-zig@v2
+      with:
+        version: 0.15.1
+
+    - name: Install Lua
+      run: sudo apt-get update && sudo apt-get install -y lua5.3
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Run tests and benchmarks for release validation
+      run: |
+        echo "Running comprehensive tests for release validation..."
+        zig build test
+        zig build bench-realistic
+        echo "✅ All tests and benchmarks passed"
+
+    - name: Generate release notes
+      id: release-notes
+      run: |
+        VERSION="${{ needs.check-version.outputs.version }}"
+        
+        # Extract changes since last tag
+        LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+        if [ -n "$LAST_TAG" ]; then
+          COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"- %s" --no-merges)
+        else
+          COMMITS=$(git log --pretty=format:"- %s" --no-merges -10)
+        fi
+        
+        # Create release notes
+        cat > release_notes.md << EOF
+        # rgcidr v$VERSION
+        
+        A high-performance Zig library and CLI tool for filtering IPv4 and IPv6 addresses against CIDR patterns.
+        
+        ## Features
+        - ⚡ Fast performance within 1.1x of the C implementation  
+        - 🔍 Available as both library and CLI tool
+        - 🌐 Full IPv4 and IPv6 support with all notation formats
+        - 📦 Zero dependencies - pure Zig implementation
+        - 🎯 Pattern matching for single IPs, CIDR ranges, and IP ranges
+        
+        ## Installation
+        
+        ### Download Pre-built Binaries
+        Download the appropriate binary for your platform from the assets below.
+        
+        ### Build from Source
+        \`\`\`bash
+        git clone https://github.com/${{ github.repository }}
+        cd rgcidr
+        zig build -Doptimize=ReleaseFast
+        \`\`\`
+        
+        ### Use as Zig Library
+        Add to your \`build.zig.zon\`:
+        \`\`\`zig
+        .dependencies = .{
+            .rgcidr = .{
+                .url = "https://github.com/${{ github.repository }}/archive/refs/tags/v$VERSION.tar.gz",
+                .hash = "...", // Use \`zig fetch --save\` to get the hash
+            },
+        },
+        \`\`\`
+        
+        ## Changes in this release
+        $COMMITS
+        
+        ## Requirements
+        - Zig 0.15.1 or later
+        
+        ## Documentation
+        See [README.md](https://github.com/${{ github.repository }}/blob/v$VERSION/README.md) for usage examples and API documentation.
+        EOF
+        
+        echo "Generated release notes:"
+        cat release_notes.md
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ needs.check-version.outputs.version }}
+        name: rgcidr v${{ needs.check-version.outputs.version }}
+        body_path: release_notes.md
+        draft: false
+        prerelease: false
+        files: |
+          artifacts/*/rgcidr-*
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Update CLAUDE.md with release info
+      run: |
+        VERSION="${{ needs.check-version.outputs.version }}"
+        echo "## Latest Release: v$VERSION" >> release_info.md
+        echo "" >> release_info.md
+        echo "Released: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> release_info.md
+        echo "Tag: v$VERSION" >> release_info.md
+        echo "Commit: ${{ github.sha }}" >> release_info.md
+        echo "" >> release_info.md
+        echo "This release was automatically created when version $VERSION was pushed to main branch." >> release_info.md
+        
+        # Append to CLAUDE.md if it exists
+        if [ -f CLAUDE.md ]; then
+          echo "" >> CLAUDE.md
+          cat release_info.md >> CLAUDE.md
+        fi

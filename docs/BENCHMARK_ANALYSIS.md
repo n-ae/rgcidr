@@ -3,7 +3,7 @@
 ## Executive Summary
 
 This comprehensive benchmark compares the performance of two implementations:
-- **C grepcidr**: The original C implementation (reference)
+- **C grepcidr**: The original C implementation by Jem Berkes (v2.0 from [pc-tools.net](https://www.pc-tools.net/unix/grepcidr/))
 - **Zig rgcidr**: New Zig reimplementation
 
 ### Key Findings

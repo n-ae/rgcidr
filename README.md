@@ -1,6 +1,6 @@
 # rgcidr
 
-A high-performance Zig library and CLI tool for filtering IPv4 and IPv6 addresses against CIDR patterns. This is a Zig reimplementation of [grepcidr](https://github.com/jrlevine/grepcidr) with optimized performance matching or exceeding the C original.
+A high-performance Zig library and CLI tool for filtering IPv4 and IPv6 addresses against CIDR patterns. This is a Zig reimplementation of [grepcidr](https://www.pc-tools.net/unix/grepcidr/) with optimized performance matching or exceeding the C original.
 
 ## Features
 
@@ -191,6 +191,13 @@ zig build test
 zig build bench
 zig build bench-advanced
 
+# Benchmark against official grepcidr 2.0 from pc-tools.net
+lua scripts/benchmark_official.lua
+# Or fetch/manage the official grepcidr separately:
+lua scripts/fetch_grepcidr.lua info    # Show source info
+lua scripts/fetch_grepcidr.lua get     # Get binary path (builds if needed)
+lua scripts/fetch_grepcidr.lua clean   # Clean temporary files
+
 # Regression testing (compare against main branch)
 zig build bench-regression
 
@@ -221,4 +228,6 @@ Contributions are welcome! Please ensure:
 
 ## Acknowledgments
 
-Based on [grepcidr](https://github.com/jrlevine/grepcidr) by John Levine.
+Based on the original [grepcidr](https://www.pc-tools.net/unix/grepcidr/) by Jem Berkes.
+- Official source: https://www.pc-tools.net/unix/grepcidr/
+- Version 2.0: https://www.pc-tools.net/files/unix/grepcidr-2.0.tar.gz
