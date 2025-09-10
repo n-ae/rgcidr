@@ -1,0 +1,10 @@
+2001:db8::
+2001:db8::1
+2001:db8:0:0:0:0:0:0
+2001:db8:0:0:0:0:0:1
+2001:db8:7fff:ffff:ffff:ffff:ffff:ffff
+2001:db8:1::
+2001:db8:0:ffff:ffff:ffff:ffff:ffff
+2001:db8:0:1::
+2001:db8:0:0:8000::
+2001:db8:0:0:7fff:ffff:ffff:ffff

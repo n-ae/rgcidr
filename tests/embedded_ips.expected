@@ -1,0 +1,7 @@
+192.168.1.1 normal IP
+url=http://192.168.1.2/path
+[192.168.1.3] brackets
+(192.168.1.4) parentheses  
+192.168.1.6:8080 with port
+192.168.1.7,other,data
+server-192.168.1.8-prod

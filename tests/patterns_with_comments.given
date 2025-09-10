@@ -1,0 +1,13 @@
+# This is a comment
+# Private networks
+
+192.168.0.0/16
+
+# Another comment
+10.0.0.0/8
+
+
+# IPv6 documentation prefix
+2001:db8::/32
+
+# End of file

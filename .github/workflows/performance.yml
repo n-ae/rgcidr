@@ -1,0 +1,67 @@
+name: Performance Regression Tests
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+jobs:
+  performance:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch full history for baseline comparison
+    
+    - uses: goto-bus-stop/setup-zig@v2
+      with:
+        version: 0.15.1
+    
+    - name: Install Lua
+      run: sudo apt-get update && sudo apt-get install -y lua5.3
+    
+    - name: Run Performance Regression Tests  
+      run: |
+        # Only run regression tests on PR branches
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          echo "Running regression tests against main branch..."
+          lua scripts/bench_regression.lua main --csv > regression_results.csv
+          
+          # Upload results as artifact
+          echo "Performance regression test completed"
+          cat regression_results.csv
+        else
+          echo "Skipping regression tests for main branch push"
+          # Just run regular benchmarks to verify performance
+          zig build bench-advanced
+        fi
+    
+    - name: Upload regression results
+      if: github.event_name == 'pull_request'
+      uses: actions/upload-artifact@v3
+      with:
+        name: performance-regression-results
+        path: regression_results.csv
+    
+    - name: Check for performance regressions
+      if: github.event_name == 'pull_request'  
+      run: |
+        # Parse CSV and check for significant regressions
+        if grep -q "slower" regression_results.csv; then
+          echo "⚠️ Performance regressions detected in this PR:"
+          grep "slower" regression_results.csv | while IFS=, read test branch1 branch2 current baseline ratio change status; do
+            echo "  - $test: $(echo $change | cut -d. -f1)% slower"
+          done
+          
+          # Check if any regression is >10% (fail the build)
+          if awk -F',' '$7 > 10.0 && $8 == "slower" {found=1} END {exit !found}' regression_results.csv; then
+            echo "❌ Critical performance regression detected (>10% slower)"
+            exit 1
+          else
+            echo "⚠️  Minor performance regressions detected but within acceptable threshold"
+          fi
+        else
+          echo "✅ No performance regressions detected"
+        fi
