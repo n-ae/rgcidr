@@ -1,4 +1,5 @@
 const std = @import("std");
+l
 const rgcidr = @import("rgcidr");
 const print = std.debug.print;
 const Allocator = std.mem.Allocator;
@@ -20,7 +21,7 @@ const ExitCode = enum(u8) {
     ok,
     no_match,
     err,
-    
+
     pub fn toInt(self: ExitCode) u8 {
         return switch (self) {
             .ok => 0,
@@ -34,10 +35,10 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
-    
+
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
-    
+
     if (args.len < 2) {
         print("Usage: rgcidr PATTERN [FILE...]\n", .{});
         print("       rgcidr [-V] [-cisvx] [-f PATTERNFILE] [PATTERN] [FILE...]\n", .{});
@@ -52,7 +53,7 @@ pub fn main() !void {
         print("  -V             Print version information\n", .{});
         std.process.exit(ExitCode.err.toInt());
     }
-    
+
     // Parse command line flags and arguments
     var count_mode = false;
     var invert_match = false;
@@ -62,12 +63,12 @@ pub fn main() !void {
     var pattern_str: ?[]const u8 = null;
     var pattern_filename: ?[]const u8 = null;
     var input_filename: ?[]const u8 = null;
-    
+
     // Simple flag parsing
     var arg_index: usize = 1;
     while (arg_index < args.len) {
         const arg = args[arg_index];
-        
+
         if (std.mem.startsWith(u8, arg, "-")) {
             // Check for flags that take arguments
             if (std.mem.eql(u8, arg, "-f")) {
@@ -113,13 +114,13 @@ pub fn main() !void {
         }
         arg_index += 1;
     }
-    
+
     // Validate that we have either a pattern string or pattern file
     if (pattern_filename == null and pattern_str == null) {
         eprint("rgcidr: No pattern specified (use -f file or provide pattern)\n", .{});
         std.process.exit(ExitCode.err.toInt());
     }
-    
+
     // Load patterns from file or command line
     var patterns = if (pattern_filename) |pfile| blk: {
         break :blk loadPatternsFromFile(pfile, strict_align, allocator) catch |err| {
@@ -133,27 +134,29 @@ pub fn main() !void {
         };
     };
     defer patterns.deinit();
-    
+
     // Process input (file or stdin)
     var any_match = false;
-    
+
     if (input_filename) |fname| {
         const file_content = std.fs.cwd().readFileAlloc(allocator, fname, 1024 * 1024) catch |err| {
             eprint("rgcidr: {s}: {any}\n", .{ fname, err });
             std.process.exit(ExitCode.err.toInt());
         };
         defer allocator.free(file_content);
-        
+
         any_match = try processContent(file_content, patterns, count_mode, invert_match, include_non_ip, exact_match, allocator);
     } else {
         // Read from stdin
-        const stdin_file = std.fs.File{ .handle = 0 };
+        const stdin_file = if (builtin.os.tag == .windows)
+            std.fs.File{ .handle = std.os.windows.GetStdHandle(std.os.windows.STD_INPUT_HANDLE) catch return }
+            else std.fs.File{ .handle = 0 };
         const content = try stdin_file.readToEndAlloc(allocator, 1024 * 1024);
         defer allocator.free(content);
-        
+
         any_match = try processContent(content, patterns, count_mode, invert_match, include_non_ip, exact_match, allocator);
     }
-    
+
     if (any_match) {
         std.process.exit(ExitCode.ok.toInt());
     } else {
@@ -166,17 +169,19 @@ fn processContent(content: []const u8, patterns: rgcidr.MultiplePatterns, count_
     var any_match = false;
     var match_count: u32 = 0;
     var lines = std.mem.splitSequence(u8, content, "\n");
-    
+
     // Adaptive output buffering - smaller buffer for small inputs and count mode
     const is_small_input = content.len < 4096;
     const buffer_size: usize = if (count_mode or is_small_input) 1024 else OUTPUT_BUFFER_SIZE;
     const flush_threshold: usize = if (count_mode or is_small_input) 512 else FLUSH_THRESHOLD;
-    
+
     var output_buffer = try allocator.alloc(u8, buffer_size);
     defer allocator.free(output_buffer);
     var output_len: usize = 0;
-    const stdout_file = std.fs.File{ .handle = 1 };
-    
+    const stdout_file = if (builtin.os.tag == .windows)
+        std.fs.File{ .handle = std.os.windows.GetStdHandle(std.os.windows.STD_OUTPUT_HANDLE) catch return false }
+        else std.fs.File{ .handle = 1 };
+
     while (lines.next()) |line| {
         // Skip empty trailing line caused by final newline
         if (line.len == 0 and lines.rest().len == 0) {
@@ -185,7 +190,7 @@ fn processContent(content: []const u8, patterns: rgcidr.MultiplePatterns, count_
         // C-style optimized line scanning with early termination
         var has_matching_ip = false;
         var has_any_ip = false;
-        
+
         // Use direct scanning with early termination (like C implementation)
         if (!invert_match and !include_non_ip) {
             // Fast path: early termination on first match (matches C behavior exactly)
@@ -200,10 +205,10 @@ fn processContent(content: []const u8, patterns: rgcidr.MultiplePatterns, count_
             // Slow path: must scan all IPs for invert logic
             has_matching_ip = try scanLineForAllMatches(line, patterns, exact_match, &has_any_ip, allocator);
         }
-        
+
         // Determine if this line should be included in output (simplified logic)
         var line_matched = false;
-        
+
         if (include_non_ip and !has_any_ip) {
             // -i flag: include lines with no IPs
             line_matched = true;
@@ -216,7 +221,7 @@ fn processContent(content: []const u8, patterns: rgcidr.MultiplePatterns, count_
             // -v flag: include lines with no IPs when inverting
             line_matched = true;
         }
-        
+
         if (line_matched) {
             any_match = true;
             if (count_mode) {
@@ -225,13 +230,13 @@ fn processContent(content: []const u8, patterns: rgcidr.MultiplePatterns, count_
                 // Buffer the output line for batched writing - comptime optimized
                 const line_len = line.len;
                 const needed_space = line_len + 1; // +1 for newline
-                
+
                 // Check if we need to flush first
                 if (output_len + needed_space > flush_threshold) {
                     try stdout_file.writeAll(output_buffer[0..output_len]);
                     output_len = 0;
                 }
-                
+
                 // Copy line and newline to buffer
                 @memcpy(output_buffer[output_len..output_len + line_len], line);
                 output_buffer[output_len + line_len] = '\n';
@@ -239,19 +244,19 @@ fn processContent(content: []const u8, patterns: rgcidr.MultiplePatterns, count_
             }
         }
     }
-    
+
     // Flush any remaining output buffer
     if (!count_mode and output_len > 0) {
         try stdout_file.writeAll(output_buffer[0..output_len]);
     }
-    
+
     // In count mode, print the count at the end to stdout
     if (count_mode) {
         const count_str = try std.fmt.allocPrint(allocator, "{d}\n", .{match_count});
         defer allocator.free(count_str);
         try stdout_file.writeAll(count_str);
     }
-    
+
     return any_match;
 }
 
@@ -272,7 +277,7 @@ fn loadPatternsFromFile(filename: []const u8, strict_align: bool, allocator: All
         };
     };
     defer allocator.free(file_content);
-    
+
     var patterns = std.ArrayList(rgcidr.Pattern){};
     defer {
         // Clean up on error
@@ -280,42 +285,42 @@ fn loadPatternsFromFile(filename: []const u8, strict_align: bool, allocator: All
             patterns.deinit(allocator);
         }
     }
-    
+
     // Process file line by line
     var lines = std.mem.splitSequence(u8, file_content, "\n");
     var line_num: u32 = 0;
-    
+
     while (lines.next()) |raw_line| {
         line_num += 1;
-        
+
         // Trim whitespace
         const line = std.mem.trim(u8, raw_line, " \t\r\n");
-        
+
         // Skip empty lines and comments (lines starting with #)
         if (line.len == 0 or line[0] == '#') {
             continue;
         }
-        
+
         // Parse the pattern
         const pattern = rgcidr.parsePattern(line, strict_align) catch |err| {
             eprint("rgcidr: {s}:{d}: Invalid pattern '{s}': {any}\n", .{ filename, line_num, line, err });
             return err;
         };
-        
+
         patterns.append(allocator, pattern) catch {
             return rgcidr.IpParseError.OutOfMemory;
         };
     }
-    
+
     if (patterns.items.len == 0) {
         eprint("rgcidr: {s}: No valid patterns found\n", .{filename});
         return rgcidr.IpParseError.InvalidFormat;
     }
-    
+
     // Transfer ownership to MultiplePatterns
     const owned_patterns = try patterns.toOwnedSlice(allocator);
     defer allocator.free(owned_patterns);
-    
+
     return rgcidr.MultiplePatterns.fromPatterns(owned_patterns, allocator);
 }
 
@@ -331,16 +336,16 @@ fn scanLineStartForMatch(line: []const u8, patterns: rgcidr.MultiplePatterns, ha
     while (i < line.len and (line[i] == ' ' or line[i] == '\t')) {
         i += 1;
     }
-    
+
     if (i >= line.len) return false;
-    
+
     // Try IPv4 first (most common)
     if (i < line.len and std.ascii.isDigit(line[i])) {
         var j = i;
         while (j < line.len and (std.ascii.isDigit(line[j]) or line[j] == '.')) {
             j += 1;
         }
-        
+
         if (rgcidr.parseIPv4(line[i..j])) |ip| {
             has_any_ip.* = true;
             if (patterns.matchesIPv4(ip)) {
@@ -348,8 +353,8 @@ fn scanLineStartForMatch(line: []const u8, patterns: rgcidr.MultiplePatterns, ha
             }
         } else |_| {}
     }
-    
-    // Try IPv6 if no IPv4 match found  
+
+    // Try IPv6 if no IPv4 match found
     if (i < line.len and (line[i] == ':' or std.ascii.isHex(line[i]))) {
         var j = i;
         while (j < line.len) {
@@ -359,7 +364,7 @@ fn scanLineStartForMatch(line: []const u8, patterns: rgcidr.MultiplePatterns, ha
             }
             j += 1;
         }
-        
+
             // Only try IPv6 if it contains colons and is long enough
             if (j > i + 2 and std.mem.indexOfScalar(u8, line[i..j], ':') != null) {
                 // Check if we stopped at an invalid boundary
@@ -371,7 +376,7 @@ fn scanLineStartForMatch(line: []const u8, patterns: rgcidr.MultiplePatterns, ha
                         valid_extraction = false;
                     }
                 }
-                
+
                 if (valid_extraction) {
                     if (rgcidr.parseIPv6(line[i..j])) |ip| {
                         has_any_ip.* = true;
@@ -382,7 +387,7 @@ fn scanLineStartForMatch(line: []const u8, patterns: rgcidr.MultiplePatterns, ha
                 }
             }
     }
-    
+
     return false;
 }
 
@@ -391,16 +396,16 @@ fn scanLineStartForMatch(line: []const u8, patterns: rgcidr.MultiplePatterns, ha
 fn scanLineForMatchWithEarlyExit(line: []const u8, patterns: rgcidr.MultiplePatterns, has_any_ip: *bool) !bool {
     // Fast path: skip obviously non-IP lines
     if (line.len < 2) return false; // Minimum IP is "::" (2 chars)
-    
+
     var i: usize = 0;
-    
+
     while (i < line.len) {
         // IPv4 hint detection (mirrors C IPV4_HINT macro)
         if (std.ascii.isDigit(line[i])) {
             const has_dot_at_1 = (i + 1 < line.len and line[i + 1] == '.');
             const has_dot_at_2 = (i + 2 < line.len and line[i + 2] == '.');
             const has_dot_at_3 = (i + 3 < line.len and line[i + 3] == '.');
-            
+
             if (has_dot_at_1 or has_dot_at_2 or has_dot_at_3) {
                 // Found IPv4 hint, scan the field (match C IPV4_FIELD exactly)
             var j = i;
@@ -412,26 +417,26 @@ fn scanLineForMatchWithEarlyExit(line: []const u8, patterns: rgcidr.MultiplePatt
                 }
                 j += 1;
             }
-            
+
             if (rgcidr.parseIPv4(line[i..j])) |ip| {
                 has_any_ip.* = true;
                 if (patterns.matchesIPv4(ip)) {
                     return true; // Early exit on first match!
                 }
             } else |_| {}
-            
+
             i = j;
             continue;
             }
         }
-        
+
         // IPv6 hint checks (like C IPV6_HINT macros) - improved detection
         if ((line[i] == ':' and i + 1 < line.len and line[i + 1] == ':') or
             (std.ascii.isHex(line[i]) and i + 1 < line.len and line[i + 1] == ':') or
             (i + 2 < line.len and std.ascii.isHex(line[i]) and std.ascii.isHex(line[i + 1]) and line[i + 2] == ':') or
             (i + 3 < line.len and std.ascii.isHex(line[i]) and std.ascii.isHex(line[i + 1]) and std.ascii.isHex(line[i + 2]) and line[i + 3] == ':') or
             (i + 4 < line.len and std.ascii.isHex(line[i]) and std.ascii.isHex(line[i + 1]) and std.ascii.isHex(line[i + 2]) and std.ascii.isHex(line[i + 3]) and line[i + 4] == ':')) {
-            
+
             // Found IPv6 hint, scan the field
             var j = i;
             while (j < line.len) {
@@ -441,7 +446,7 @@ fn scanLineForMatchWithEarlyExit(line: []const u8, patterns: rgcidr.MultiplePatt
                 }
                 j += 1;
             }
-            
+
             // Only try IPv6 if it contains colons
             if (j > i and std.mem.indexOfScalar(u8, line[i..j], ':') != null) {
                 // Check if we stopped at an invalid boundary
@@ -453,7 +458,7 @@ fn scanLineForMatchWithEarlyExit(line: []const u8, patterns: rgcidr.MultiplePatt
                         valid_extraction = false;
                     }
                 }
-                
+
                 if (valid_extraction) {
                     if (rgcidr.parseIPv6(line[i..j])) |ip| {
                         has_any_ip.* = true;
@@ -463,42 +468,42 @@ fn scanLineForMatchWithEarlyExit(line: []const u8, patterns: rgcidr.MultiplePatt
                     } else |_| {}
                 }
             }
-            
+
             i = j;
             continue;
         }
-        
+
         i += 1;
     }
-    
+
     return false;
 }
 
 /// Scan entire line for all IPs (needed for invert logic)
 fn scanLineForAllMatches(line: []const u8, patterns: rgcidr.MultiplePatterns, exact_match: bool, has_any_ip: *bool, allocator: Allocator) !bool {
     var has_matching_ip = false;
-    
+
     if (exact_match) {
         // Just check line start
         return scanLineStartForMatch(line, patterns, has_any_ip);
     }
-    
+
     // Need to find all IPs for invert logic (slow path)
     var scanner = rgcidr.IpScanner.init(allocator);
     defer scanner.deinit();
-    
+
     const ipv4s = try scanner.scanIPv4(line);
     const ipv6s = try scanner.scanIPv6(line);
-    
+
     has_any_ip.* = (ipv4s.len > 0 or ipv6s.len > 0);
-    
+
     for (ipv4s) |ip| {
         if (patterns.matchesIPv4(ip)) {
             has_matching_ip = true;
             break;
         }
     }
-    
+
     if (!has_matching_ip) {
         for (ipv6s) |ip| {
             if (patterns.matchesIPv6(ip)) {
@@ -507,7 +512,7 @@ fn scanLineForAllMatches(line: []const u8, patterns: rgcidr.MultiplePatterns, ex
             }
         }
     }
-    
+
     return has_matching_ip;
 }
 
