@@ -5,6 +5,11 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+  packages: write
+  actions: read
+
 jobs:
   check-version:
     runs-on: ubuntu-latest
@@ -23,15 +28,22 @@ jobs:
         VERSION=$(grep -E '^\s*\.version\s*=' build.zig.zon | sed 's/.*"\([^"]*\)".*/\1/')
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         echo "Current version: $VERSION"
-        
-        # Check if this version already has a release/tag
-        if git tag -l | grep -q "^v$VERSION$"; then
+
+        # Check if this version already has a release/tag (more robust check)
+        git fetch --tags 2>/dev/null || true
+        if git rev-parse "v$VERSION" >/dev/null 2>&1; then
           echo "Tag v$VERSION already exists, skipping release"
           echo "should-release=false" >> $GITHUB_OUTPUT
         else
           echo "Tag v$VERSION does not exist, will create release"
           echo "should-release=true" >> $GITHUB_OUTPUT
         fi
+
+        # Also check for existing GitHub release
+        RELEASE_EXISTS=$(gh release view "v$VERSION" >/dev/null 2>&1 && echo "true" || echo "false")
+        echo "Release exists: $RELEASE_EXISTS"
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-artifacts:
     needs: check-version
@@ -112,7 +124,7 @@ jobs:
       id: release-notes
       run: |
         VERSION="${{ needs.check-version.outputs.version }}"
-        
+
         # Extract changes since last tag
         LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
         if [ -n "$LAST_TAG" ]; then
@@ -120,32 +132,32 @@ jobs:
         else
           COMMITS=$(git log --pretty=format:"- %s" --no-merges -10)
         fi
-        
+
         # Create release notes
         cat > release_notes.md << EOF
         # rgcidr v$VERSION
-        
+
         A high-performance Zig library and CLI tool for filtering IPv4 and IPv6 addresses against CIDR patterns.
-        
+
         ## Features
-        - ⚡ Fast performance within 1.1x of the C implementation  
+        - ⚡ Fast performance within 1.1x of the C implementation
         - 🔍 Available as both library and CLI tool
         - 🌐 Full IPv4 and IPv6 support with all notation formats
         - 📦 Zero dependencies - pure Zig implementation
         - 🎯 Pattern matching for single IPs, CIDR ranges, and IP ranges
-        
+
         ## Installation
-        
+
         ### Download Pre-built Binaries
         Download the appropriate binary for your platform from the assets below.
-        
+
         ### Build from Source
         \`\`\`bash
         git clone https://github.com/${{ github.repository }}
         cd rgcidr
         zig build -Doptimize=ReleaseFast
         \`\`\`
-        
+
         ### Use as Zig Library
         Add to your \`build.zig.zon\`:
         \`\`\`zig
@@ -156,22 +168,27 @@ jobs:
             },
         },
         \`\`\`
-        
+
         ## Changes in this release
         $COMMITS
-        
+
         ## Requirements
         - Zig 0.15.1 or later
-        
+
         ## Documentation
         See [README.md](https://github.com/${{ github.repository }}/blob/v$VERSION/README.md) for usage examples and API documentation.
         EOF
-        
+
         echo "Generated release notes:"
         cat release_notes.md
 
+    - name: List artifacts for debugging
+      run: |
+        echo "Available artifacts:"
+        find artifacts -type f -name "rgcidr-*" -ls || echo "No artifacts found"
+
     - name: Create Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         tag_name: v${{ needs.check-version.outputs.version }}
         name: rgcidr v${{ needs.check-version.outputs.version }}
@@ -180,7 +197,11 @@ jobs:
         prerelease: false
         files: |
           artifacts/*/rgcidr-*
-        token: ${{ secrets.GITHUB_TOKEN }}
+        make_latest: true
+        generate_release_notes: false
+        fail_on_unmatched_files: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Update CLAUDE.md with release info
       run: |
@@ -192,7 +213,7 @@ jobs:
         echo "Commit: ${{ github.sha }}" >> release_info.md
         echo "" >> release_info.md
         echo "This release was automatically created when version $VERSION was pushed to main branch." >> release_info.md
-        
+
         # Append to CLAUDE.md if it exists
         if [ -f CLAUDE.md ]; then
           echo "" >> CLAUDE.md
