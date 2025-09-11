@@ -213,6 +213,34 @@ pub fn build(b: *std.Build) void {
     const profile_step = b.step("profile", "Run Lua profiling script");
     profile_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/profile.lua" }).step);
 
+    // Micro-benchmark for optimization testing
+    const micro_bench_step = b.step("micro-bench", "Run micro-benchmarks for optimization analysis");
+    const micro_bench_exe = b.addExecutable(.{
+        .name = "micro_benchmark",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("scripts/micro_benchmark.zig"),
+            .target = target,
+            .optimize = .ReleaseFast,
+            .imports = &.{.{ .name = "rgcidr", .module = mod }},
+        }),
+    });
+    const micro_bench_run = b.addRunArtifact(micro_bench_exe);
+    micro_bench_step.dependOn(&micro_bench_run.step);
+
+    // Optimization strategy benchmark
+    const opt_bench_step = b.step("opt-bench", "Run optimization strategy benchmarks");
+    const opt_bench_exe = b.addExecutable(.{
+        .name = "optimization_benchmark",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("scripts/optimization_benchmark.zig"),
+            .target = target,
+            .optimize = .ReleaseFast,
+            .imports = &.{.{ .name = "rgcidr", .module = mod }},
+        }),
+    });
+    const opt_bench_run = b.addRunArtifact(opt_bench_exe);
+    opt_bench_step.dependOn(&opt_bench_run.step);
+
     const profile_detailed_step = b.step("profile-detailed", "Run detailed Zig profiling");
     const profile_exe = b.addExecutable(.{
         .name = "profile_detailed",

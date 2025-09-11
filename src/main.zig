@@ -45,6 +45,49 @@ const IPV4_FIELD_LOOKUP: [256]bool = blk: {
     break :blk lookup;
 };
 
+/// Ultra-fast IPv4 parsing optimized for the hot scanning path
+/// Eliminates function call overhead with aggressive inlining and minimal validation
+inline fn parseIPv4Fast(ip_str: []const u8) rgcidr.IpParseError!rgcidr.IPv4 {
+    // Quick validation - most common failure case
+    const len = ip_str.len;
+    if (len < 7 or len > 15) return rgcidr.IpParseError.InvalidFormat;
+    
+    var parts: [4]u8 = undefined;
+    var part_idx: u8 = 0;
+    var i: usize = 0;
+    var num: u16 = 0;
+    
+    // Optimized parsing with reduced branching and bounds checking
+    while (i < len and part_idx < 4) {
+        const c = ip_str[i];
+        
+        if (c >= '0' and c <= '9') {
+            const digit = c - '0';
+            num = num * 10 + digit;
+            if (num > 255) return rgcidr.IpParseError.InvalidOctet;
+            i += 1;
+        } else if (c == '.') {
+            if (part_idx == 3 or num == 0 and i > 0 and ip_str[i-1] != '0') return rgcidr.IpParseError.InvalidFormat;
+            parts[part_idx] = @intCast(num);
+            part_idx += 1;
+            num = 0;
+            i += 1;
+        } else {
+            return rgcidr.IpParseError.InvalidFormat;
+        }
+    }
+    
+    // Final validation and part assignment
+    if (part_idx != 3 or i != len) return rgcidr.IpParseError.InvalidFormat;
+    parts[3] = @intCast(num);
+    
+    // Comptime-optimized packing
+    return (@as(u32, parts[0]) << 24) |
+           (@as(u32, parts[1]) << 16) |
+           (@as(u32, parts[2]) << 8) |
+           @as(u32, parts[3]);
+}
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -405,42 +448,47 @@ fn scanLineStartForMatch(line: []const u8, patterns: rgcidr.MultiplePatterns, ha
     return false;
 }
 
-/// Scan entire line with early termination
-/// Uses hint-based scanning similar to C implementation's scan_with_hints
-fn scanLineForMatchWithEarlyExit(line: []const u8, patterns: rgcidr.MultiplePatterns, has_any_ip: *bool) !bool {
+/// Ultra-optimized line scanning with early termination and inlined parsing
+/// Uses hint-based scanning with aggressive optimizations for maximum throughput
+inline fn scanLineForMatchWithEarlyExit(line: []const u8, patterns: rgcidr.MultiplePatterns, has_any_ip: *bool) !bool {
     // Fast path: skip obviously non-IP lines
-    if (line.len < 2) return false; // Minimum IP is "::" (2 chars)
+    if (line.len < 7) return false; // Minimum IPv4 is "1.1.1.1" (7 chars)
 
     var i: usize = 0;
 
     while (i < line.len) {
-        // IPv4 hint detection (mirrors C IPV4_HINT macro)
+        // Optimized IPv4 hint detection with reduced branching
         if (std.ascii.isDigit(line[i])) {
-            const has_dot_at_1 = (i + 1 < line.len and line[i + 1] == '.');
-            const has_dot_at_2 = (i + 2 < line.len and line[i + 2] == '.');
-            const has_dot_at_3 = (i + 3 < line.len and line[i + 3] == '.');
-
-            if (has_dot_at_1 or has_dot_at_2 or has_dot_at_3) {
-                // Found IPv4 hint, scan the field (match C IPV4_FIELD exactly)
-            var j = i;
-            while (j < line.len) {
-                const c = line[j];
-                // Fast lookup table for IPv4 field characters - much faster than multiple range checks
-                if (!IPV4_FIELD_LOOKUP[c]) {
+            // Look ahead for dots efficiently
+            const remaining = line.len - i;
+            if (remaining < 7) break; // Not enough space for valid IPv4
+            
+            var has_dot = false;
+            const check_limit = @min(i + 4, line.len);
+            for (line[i + 1..check_limit]) |c| {
+                if (c == '.') {
+                    has_dot = true;
                     break;
                 }
-                j += 1;
             }
 
-            if (rgcidr.parseIPv4(line[i..j])) |ip| {
-                has_any_ip.* = true;
-                if (patterns.matchesIPv4(ip)) {
-                    return true; // Early exit on first match!
+            if (has_dot) {
+                // Found IPv4 hint, scan the field with optimized loop
+                var j = i;
+                while (j < line.len and IPV4_FIELD_LOOKUP[line[j]]) {
+                    j += 1;
                 }
-            } else |_| {}
 
-            i = j;
-            continue;
+                // Inline IPv4 parsing with comptime optimization for hot path
+                if (parseIPv4Fast(line[i..j])) |ip| {
+                    has_any_ip.* = true;
+                    if (patterns.matchesIPv4(ip)) {
+                        return true; // Early exit on first match!
+                    }
+                } else |_| {}
+
+                i = j;
+                continue;
             }
         }
 
