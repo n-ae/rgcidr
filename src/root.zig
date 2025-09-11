@@ -288,16 +288,26 @@ fn parseIPv6WithEmbeddedIPv4(ip_str: []const u8) IpParseError!IPv6 {
     return IpParseError.InvalidFormat;
 }
 
-/// Validate that a string contains only valid IPv6 hex characters (0-9, a-f, A-F)
+// Fast hex character validation using compile-time lookup table
+const HEX_CHARS = "0123456789abcdefABCDEF";
+const HEX_LOOKUP: [256]bool = blk: {
+    var lookup = [_]bool{false} ** 256;
+    for (HEX_CHARS) |c| {
+        lookup[c] = true;
+    }
+    break :blk lookup;
+};
+
+/// Optimized validation for IPv6 hex groups using lookup table
 /// Empty groups are allowed for :: compression
 fn isValidIPv6HexGroup(group_str: []const u8) bool {
     // Allow arbitrarily long groups if the extra leading chars are all '0'.
     // This matches grepcidr behavior in tests (e.g., 02001:db8::1).
     if (group_str.len == 0) return true; // empty allowed for :: compression
 
-    // Validate all characters are hex
+    // Fast validation using lookup table
     for (group_str) |c| {
-        if (!std.ascii.isHex(c)) return false;
+        if (!HEX_LOOKUP[c]) return false;
     }
 
     // If length <= 4, it's valid as-is
@@ -732,28 +742,37 @@ pub const MultiplePatterns = struct {
 
     /// Fast IPv4 matching using binary search - O(log n) with fast paths - O(1)
     pub inline fn matchesIPv4(self: MultiplePatterns, ip: IPv4) bool {
-        // Fast path: single pattern optimization
+        // Fast path: single pattern optimization (most common case)
         if (self.single_ipv4_pattern) |single| {
             return ip >= single.min and ip <= single.max;
         }
 
-        // Fast path: no IPv4 patterns
+        // Fast path: no IPv4 patterns (early exit)
         if (self.ipv4_ranges.len == 0) return false;
+        
+        // Micro-optimization: Handle small pattern counts with linear search
+        if (self.ipv4_ranges.len <= 4) {
+            for (self.ipv4_ranges) |range| {
+                if (ip >= range.min and ip <= range.max) return true;
+            }
+            return false;
+        }
 
-        // Binary search for a range that might contain this IP
+        // Optimized binary search with reduced branching
         var left: usize = 0;
         var right: usize = self.ipv4_ranges.len;
 
         while (left < right) {
-            const mid = (left + right) / 2;
+            const mid = left + (right - left) / 2; // Prevent overflow, better for small ranges
             const range = self.ipv4_ranges[mid];
 
+            // Single comparison path optimization
             if (ip < range.min) {
                 right = mid;
-            } else if (ip > range.max) {
-                left = mid + 1;
+            } else if (ip <= range.max) {
+                return true; // In range - most common success case
             } else {
-                return true; // Found containing range
+                left = mid + 1;
             }
         }
 
@@ -762,27 +781,36 @@ pub const MultiplePatterns = struct {
 
     /// Fast IPv6 matching using binary search - O(log n) with fast paths - O(1)
     pub inline fn matchesIPv6(self: MultiplePatterns, ip: IPv6) bool {
-        // Fast path: single pattern optimization
+        // Fast path: single pattern optimization (most common case)
         if (self.single_ipv6_pattern) |single| {
             return ip >= single.min and ip <= single.max;
         }
 
-        // Fast path: no IPv6 patterns
+        // Fast path: no IPv6 patterns (early exit)
         if (self.ipv6_ranges.len == 0) return false;
+        
+        // Micro-optimization: Handle small pattern counts with linear search
+        if (self.ipv6_ranges.len <= 4) {
+            for (self.ipv6_ranges) |range| {
+                if (ip >= range.min and ip <= range.max) return true;
+            }
+            return false;
+        }
 
         var left: usize = 0;
         var right: usize = self.ipv6_ranges.len;
 
         while (left < right) {
-            const mid = (left + right) / 2;
+            const mid = left + (right - left) / 2;
             const range = self.ipv6_ranges[mid];
 
+            // Single comparison path optimization
             if (ip < range.min) {
                 right = mid;
-            } else if (ip > range.max) {
-                left = mid + 1;
+            } else if (ip <= range.max) {
+                return true; // In range - most common success case
             } else {
-                return true; // Found containing range
+                left = mid + 1;
             }
         }
 
@@ -907,16 +935,8 @@ pub fn parseMultiplePatterns(pattern_str: []const u8, strict_align: bool, alloca
     var patterns = std.ArrayList(Pattern){};
     defer patterns.deinit(allocator);
 
-    // Replace commas with spaces for consistent splitting
-    var normalized = try allocator.alloc(u8, pattern_str.len);
-    defer allocator.free(normalized);
-
-    for (pattern_str, 0..) |c, i| {
-        normalized[i] = if (c == ',') ' ' else c;
-    }
-
-    // Split on whitespace and parse each pattern
-    var tokens = std.mem.tokenizeAny(u8, normalized, " \t\r\n");
+    // Optimize: Avoid allocation by directly tokenizing with comma and space separators
+    var tokens = std.mem.tokenizeAny(u8, pattern_str, " \t\r\n,");
 
     while (tokens.next()) |token| {
         const pattern = parseSinglePattern(token, strict_align) catch |err| {
@@ -974,24 +994,28 @@ inline fn isIPv6FieldChar(c: u8) bool {
 }
 
 // IPv6 hint detection functions for optimized scanning
-inline fn ipv6Hint1(p: []const u8, pos: usize) bool {
-    return pos + 2 < p.len and p[pos] == ':' and p[pos + 1] == ':' and std.ascii.isHex(p[pos + 2]);
-}
-inline fn ipv6Hint2(p: []const u8, pos: usize) bool {
-    return pos + 1 < p.len and std.ascii.isHex(p[pos]) and p[pos + 1] == ':';
-}
-inline fn ipv6Hint3(p: []const u8, pos: usize) bool {
-    return pos + 2 < p.len and std.ascii.isHex(p[pos]) and std.ascii.isHex(p[pos + 1]) and p[pos + 2] == ':';
-}
-inline fn ipv6Hint4(p: []const u8, pos: usize) bool {
-    return pos + 3 < p.len and std.ascii.isHex(p[pos]) and std.ascii.isHex(p[pos + 1]) and std.ascii.isHex(p[pos + 2]) and p[pos + 3] == ':';
-}
-inline fn ipv6Hint5(p: []const u8, pos: usize) bool {
-    return pos + 4 < p.len and std.ascii.isHex(p[pos]) and std.ascii.isHex(p[pos + 1]) and std.ascii.isHex(p[pos + 2]) and std.ascii.isHex(p[pos + 3]) and p[pos + 4] == ':';
-}
-inline fn ipv6HintSpecial(p: []const u8, pos: usize) bool {
-    // Check for :: anywhere, including standalone :: or ::1
-    return (pos + 1 < p.len and p[pos] == ':' and p[pos + 1] == ':');
+/// Optimized IPv6 hint detection with unified logic for better branch prediction
+inline fn ipv6HintFast(p: []const u8, pos: usize) bool {
+    if (pos >= p.len) return false;
+
+    const c = p[pos];
+
+    // Fast path: Check for double colon (::) - most common IPv6 indicator
+    if (c == ':' and pos + 1 < p.len and p[pos + 1] == ':') {
+        return true;
+    }
+
+    // Check for hex digit followed by colon (single branch for all hex lengths)
+    if (std.ascii.isHex(c)) {
+        // Look ahead for colon at positions 1-4 (unified check)
+        const max_check = @min(pos + 5, p.len);
+        for (pos + 1..max_check) |i| {
+            if (p[i] == ':') return true;
+            if (!std.ascii.isHex(p[i])) break;
+        }
+    }
+
+    return false;
 }
 // Additional hint for standalone :: at start of line or after whitespace
 inline fn ipv6HintStandalone(p: []const u8, pos: usize) bool {
@@ -1014,11 +1038,16 @@ const IPV4_LOOKUP: [256]bool = blk: {
     break :blk lookup;
 };
 
+/// Optimized IPv4 hint detection with early termination
 inline fn ipv4Hint(p: []const u8, pos: usize) bool {
-    return pos < p.len and std.ascii.isDigit(p[pos]) and
-        ((pos + 1 < p.len and p[pos + 1] == '.') or
-            (pos + 2 < p.len and p[pos + 2] == '.') or
-            (pos + 3 < p.len and p[pos + 3] == '.'));
+    if (pos >= p.len or !std.ascii.isDigit(p[pos])) return false;
+    
+    // Check for dot at positions 1, 2, or 3 with early termination
+    const max_check = @min(pos + 4, p.len);
+    for (pos + 1..max_check) |i| {
+        if (p[i] == '.') return true;
+    }
+    return false;
 }
 
 inline fn isIPv4FieldChar(c: u8) bool {
@@ -1125,9 +1154,7 @@ pub const IpScanner = struct {
 
         var i: usize = 0;
         while (i < line.len) {
-            if (ipv6HintStandalone(line, i) or ipv6HintSpecial(line, i) or ipv6Hint1(line, i) or
-                ipv6Hint2(line, i) or ipv6Hint3(line, i) or ipv6Hint4(line, i) or ipv6Hint5(line, i))
-            {
+            if (ipv6HintFast(line, i) or ipv6HintStandalone(line, i)) {
                 var j = i;
                 while (j < line.len and isIPv6FieldChar(line[j])) {
                     j += 1;
@@ -1169,9 +1196,7 @@ pub const IpScanner = struct {
 
         var i: usize = 0;
         while (i < line.len) {
-            if (ipv6HintStandalone(line, i) or ipv6HintSpecial(line, i) or ipv6Hint1(line, i) or
-                ipv6Hint2(line, i) or ipv6Hint3(line, i) or ipv6Hint4(line, i) or ipv6Hint5(line, i))
-            {
+            if (ipv6HintFast(line, i) or ipv6HintStandalone(line, i)) {
                 var j = i;
                 while (j < line.len and isIPv6FieldChar(line[j])) {
                     j += 1;

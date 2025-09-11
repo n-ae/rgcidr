@@ -179,8 +179,13 @@ local rg_time = os.clock() - rg_start
 os.remove(tmpfile)
 
 local speedup = grep_time / rg_time
-print(string.format("  grepcidr: %.3fs (100 iterations, 1000 IPs)", grep_time))
-print(string.format("  rgcidr:   %.3fs (100 iterations, 1000 IPs)", rg_time))
+local grep_time_us = grep_time * 1000000
+local rg_time_us = rg_time * 1000000
+local avg_grep_us = grep_time_us / 100  -- 100 iterations
+local avg_rg_us = rg_time_us / 100
+
+print(string.format("  grepcidr: %.1fμs/op (%.3fs total, 100 iterations, 1000 IPs)", avg_grep_us, grep_time))
+print(string.format("  rgcidr:   %.1fμs/op (%.3fs total, 100 iterations, 1000 IPs)", avg_rg_us, rg_time))
 print(string.format("  Speedup:  %.2fx %s", speedup, speedup > 1 and "faster ✓" or "slower"))
 
 print("\n=================================================")

@@ -100,11 +100,16 @@ local function benchmark_comparison(test_name, input, pattern, iterations)
 	-- Clean up
 	os.remove(input_file)
 
-	-- Report results
+	-- Report results (convert to microseconds)
 	local speedup = grepcidr_time / rgcidr_time
+	local grepcidr_time_us = grepcidr_time * 1000000
+	local rgcidr_time_us = rgcidr_time * 1000000
+	local avg_grepcidr_us = grepcidr_time_us / iterations
+	local avg_rgcidr_us = rgcidr_time_us / iterations
+	
 	print(string.format("%s:", test_name))
-	print(string.format("  grepcidr: %.3fs (%d iterations)", grepcidr_time, iterations))
-	print(string.format("  rgcidr:   %.3fs (%d iterations)", rgcidr_time, iterations))
+	print(string.format("  grepcidr: %.1fμs/op (%.3fs total, %d iterations)", avg_grepcidr_us, grepcidr_time, iterations))
+	print(string.format("  rgcidr:   %.1fμs/op (%.3fs total, %d iterations)", avg_rgcidr_us, rgcidr_time, iterations))
 	print(string.format("  Speedup:  %.2fx %s", speedup, speedup > 1 and "faster ✓" or "slower"))
 
 	return speedup

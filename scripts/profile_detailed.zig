@@ -5,10 +5,10 @@ const time = std.time;
 const BenchmarkResult = struct {
     name: []const u8,
     iterations: u64,
-    total_ns: i128,
-    min_ns: i128,
-    max_ns: i128,
-    avg_ns: f64,
+    total_us: i128,
+    min_us: i128,
+    max_us: i128,
+    avg_us: f64,
     ops_per_sec: f64,
 };
 
@@ -24,26 +24,26 @@ fn benchmark(comptime name: []const u8, iterations: u64, func: anytype) !Benchma
     
     // Actual benchmark
     for (0..iterations) |_| {
-        const start = time.nanoTimestamp();
+        const start = time.microTimestamp();
         _ = try func();
-        const end = time.nanoTimestamp();
-        const elapsed = end - start;
+        const end = time.microTimestamp();
+        const elapsed_us = end - start;
         
-        min_time = @min(min_time, elapsed);
-        max_time = @max(max_time, elapsed);
-        total_time += elapsed;
+        min_time = @min(min_time, elapsed_us);
+        max_time = @max(max_time, elapsed_us);
+        total_time += elapsed_us;
     }
     
-    const avg_ns = @as(f64, @floatFromInt(total_time)) / @as(f64, @floatFromInt(iterations));
-    const ops_per_sec = 1_000_000_000.0 / avg_ns;
+    const avg_us = @as(f64, @floatFromInt(total_time)) / @as(f64, @floatFromInt(iterations));
+    const ops_per_sec = 1_000_000.0 / avg_us;
     
     return BenchmarkResult{
         .name = name,
         .iterations = iterations,
-        .total_ns = total_time,
-        .min_ns = min_time,
-        .max_ns = max_time,
-        .avg_ns = avg_ns,
+        .total_us = total_time,
+        .min_us = min_time,
+        .max_us = max_time,
+        .avg_us = avg_us,
         .ops_per_sec = ops_per_sec,
     };
 }
@@ -184,16 +184,19 @@ pub fn main() !void {
         binary_search,
     };
     
-    std.debug.print("Operation                   Iterations    Min(ns)    Avg(ns)    Max(ns)    Ops/sec\n", .{});
-    std.debug.print("-------------------------   ----------   --------   --------   --------   ----------\n", .{});
+    std.debug.print("Operation                   Iterations    Min(μs)    Avg(μs)    Max(μs)    Avg(ns)    Ops/sec\n", .{});
+    std.debug.print("-------------------------   ----------   --------   --------   --------   --------   ----------\n", .{});
     
     for (results) |result| {
-        std.debug.print("{s:<25}   {d:>10}   {d:>8}   {d:>8.1}   {d:>8}   {d:>10.0}\n", .{
+        const avg_ns = result.avg_us * 1_000.0; // Convert to nanoseconds for display only
+        
+        std.debug.print("{s:<25}   {d:>10}   {d:>8.3}   {d:>8.3}   {d:>8.3}   {d:>8.1}   {d:>10.0}\n", .{
             result.name,
             result.iterations,
-            result.min_ns,
-            result.avg_ns,
-            result.max_ns,
+            @as(f64, @floatFromInt(result.min_us)),
+            result.avg_us,
+            @as(f64, @floatFromInt(result.max_us)),
+            avg_ns,
             result.ops_per_sec,
         });
     }

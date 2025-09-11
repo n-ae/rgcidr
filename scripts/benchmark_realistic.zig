@@ -42,20 +42,21 @@ pub fn main() !void {
     const iterations: u64 = 10_000_000;
     var matches: u64 = 0;
     
-    const start = time.nanoTimestamp();
+    const start = time.microTimestamp();
     for (0..iterations) |i| {
         const ip = test_ips[i % test_ips.len];
         if (patterns.matchesIPv4(ip)) {
             matches += 1;
         }
     }
-    const elapsed = time.nanoTimestamp() - start;
+    const elapsed_us = time.microTimestamp() - start;
     
-    const ns_per_op = @as(f64, @floatFromInt(elapsed)) / @as(f64, @floatFromInt(iterations));
-    const ops_per_sec = 1_000_000_000.0 / ns_per_op;
+    const us_per_op = @as(f64, @floatFromInt(elapsed_us)) / @as(f64, @floatFromInt(iterations));
+    const ns_per_op = us_per_op * 1_000.0;
+    const ops_per_sec = 1_000_000.0 / us_per_op;
     
-    std.debug.print("   Results: {} iterations in {d:.2}ms\n", .{ iterations, @as(f64, @floatFromInt(elapsed)) / 1_000_000.0 });
-    std.debug.print("   Speed: {d:.1} ns/op, {d:.0} ops/sec\n", .{ ns_per_op, ops_per_sec });
+    std.debug.print("   Results: {} iterations in {d:.1}μs ({d:.2}ms)\n", .{ iterations, @as(f64, @floatFromInt(elapsed_us)), @as(f64, @floatFromInt(elapsed_us)) / 1_000.0 });
+    std.debug.print("   Speed: {d:.3}μs/op ({d:.1} ns/op), {d:.0} ops/sec\n", .{ us_per_op, ns_per_op, ops_per_sec });
     std.debug.print("   Hit rate: {d:.1}%\n\n", .{ @as(f64, @floatFromInt(matches)) * 100.0 / @as(f64, @floatFromInt(iterations)) });
     
     // Benchmark 2: Line scanning with matching
@@ -68,7 +69,7 @@ pub fn main() !void {
     var found_matches: u64 = 0;
     var total_ips: u64 = 0;
     
-    const scan_start = time.nanoTimestamp();
+    const scan_start = time.microTimestamp();
     for (0..scan_iterations) |i| {
         const line = test_lines[i % test_lines.len];
         const ips = try scanner.scanIPv4(line);
@@ -80,13 +81,14 @@ pub fn main() !void {
             }
         }
     }
-    const scan_elapsed = time.nanoTimestamp() - scan_start;
+    const scan_elapsed_us = time.microTimestamp() - scan_start;
     
-    const lines_per_sec = @as(f64, @floatFromInt(scan_iterations)) * 1_000_000_000.0 / @as(f64, @floatFromInt(scan_elapsed));
+    const lines_per_sec = @as(f64, @floatFromInt(scan_iterations)) * 1_000_000.0 / @as(f64, @floatFromInt(scan_elapsed_us));
+    const us_per_line = @as(f64, @floatFromInt(scan_elapsed_us)) / @as(f64, @floatFromInt(scan_iterations));
     
-    std.debug.print("   Processed: {} lines\n", .{scan_iterations});
+    std.debug.print("   Processed: {} lines in {d:.1}μs\n", .{scan_iterations, @as(f64, @floatFromInt(scan_elapsed_us))});
     std.debug.print("   Found: {} IPs total, {} matches\n", .{ total_ips, found_matches });
-    std.debug.print("   Speed: {d:.0} lines/sec\n\n", .{lines_per_sec});
+    std.debug.print("   Speed: {d:.3}μs/line, {d:.0} lines/sec\n\n", .{us_per_line, lines_per_sec});
     
     // Benchmark 3: Early exit optimization
     std.debug.print("3. Early Exit Optimization Test\n", .{});
@@ -94,20 +96,21 @@ pub fn main() !void {
     const early_iterations: u64 = 100_000;
     var early_matches: u64 = 0;
     
-    const early_start = time.nanoTimestamp();
+    const early_start = time.microTimestamp();
     for (0..early_iterations) |i| {
         const line = test_lines[i % test_lines.len];
         if (try scanner.scanIPv4WithEarlyExit(line, patterns)) |_| {
             early_matches += 1;
         }
     }
-    const early_elapsed = time.nanoTimestamp() - early_start;
+    const early_elapsed_us = time.microTimestamp() - early_start;
     
-    const early_lines_per_sec = @as(f64, @floatFromInt(early_iterations)) * 1_000_000_000.0 / @as(f64, @floatFromInt(early_elapsed));
+    const early_lines_per_sec = @as(f64, @floatFromInt(early_iterations)) * 1_000_000.0 / @as(f64, @floatFromInt(early_elapsed_us));
+    const early_us_per_line = @as(f64, @floatFromInt(early_elapsed_us)) / @as(f64, @floatFromInt(early_iterations));
     
-    std.debug.print("   Processed: {} lines with early exit\n", .{early_iterations});
+    std.debug.print("   Processed: {} lines with early exit in {d:.1}μs\n", .{early_iterations, @as(f64, @floatFromInt(early_elapsed_us))});
     std.debug.print("   Matches: {} lines contained matching IPs\n", .{early_matches});
-    std.debug.print("   Speed: {d:.0} lines/sec\n", .{early_lines_per_sec});
+    std.debug.print("   Speed: {d:.3}μs/line, {d:.0} lines/sec\n", .{early_us_per_line, early_lines_per_sec});
     std.debug.print("   Speedup vs full scan: {d:.1}x\n\n", .{ early_lines_per_sec / lines_per_sec });
     
     // Benchmark 4: Memory usage
@@ -124,10 +127,12 @@ pub fn main() !void {
     // Benchmark 5: Compare with original estimate
     std.debug.print("\n5. Performance vs C Implementation\n", .{});
     const c_ns_per_match: f64 = 28.0; // From original benchmark
+    const c_us_per_match: f64 = c_ns_per_match / 1_000.0;
     const zig_ns_per_match = ns_per_op;
+    const zig_us_per_match = us_per_op;
     
-    std.debug.print("   C implementation: ~{d:.1} ns/match\n", .{c_ns_per_match});
-    std.debug.print("   Zig implementation: {d:.1} ns/match\n", .{zig_ns_per_match});
+    std.debug.print("   C implementation: ~{d:.3}μs/match ({d:.1} ns/match)\n", .{c_us_per_match, c_ns_per_match});
+    std.debug.print("   Zig implementation: {d:.3}μs/match ({d:.1} ns/match)\n", .{zig_us_per_match, zig_ns_per_match});
     if (zig_ns_per_match < c_ns_per_match) {
         std.debug.print("   Zig is {d:.1}x faster! ✓\n", .{ c_ns_per_match / zig_ns_per_match });
     } else {

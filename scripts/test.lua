@@ -38,6 +38,21 @@ local function file_exists(name)
 	end
 end
 
+local function check_grepcidr_available()
+	-- Check if grepcidr executable is available
+	local _, exit_code = run_command("which grepcidr")
+	if exit_code == 0 then
+		return "grepcidr"  -- System grepcidr
+	end
+	
+	-- Check if local grepcidr build exists
+	if file_exists("./grepcidr/grepcidr") then
+		return "./grepcidr/grepcidr"  -- Local build
+	end
+	
+	return nil  -- Not available
+end
+
 local function read_file(filename)
 	local file = io.open(filename, "r")
 	if not file then
@@ -301,65 +316,85 @@ local function run_test(test_name)
 
 	-- Handle benchmark tests separately
 	if benchmark_mode and is_benchmark then
-		-- Run each UAT separately for benchmarks (100 iterations for very low variance)
+		-- Run rgcidr benchmark (always available)
 		local rgcidr_result = run_uat_benchmark(test_name, "rgcidr", "./zig-out/bin/rgcidr", 100)
-		local grepcidr_result = run_uat_benchmark(test_name, "grepcidr", "./grepcidr/grepcidr", 100)
-
-		-- Store results for both UATs
 		table.insert(csv_results, rgcidr_result)
-		table.insert(csv_results, grepcidr_result)
+		
+		-- Run grepcidr benchmark only if available
+		local grepcidr_path = check_grepcidr_available()
+		local grepcidr_result = nil
+		
+		if grepcidr_path then
+			grepcidr_result = run_uat_benchmark(test_name, "grepcidr", grepcidr_path, 100)
+			table.insert(csv_results, grepcidr_result)
+		end
 
 		-- Check if both passed (for summary counting)
-		local both_passed = rgcidr_result.test_passed and grepcidr_result.test_passed
+		local both_passed = rgcidr_result.test_passed and (not grepcidr_result or grepcidr_result.test_passed)
 
 		if both_passed then
 			if not csv_mode then
 				local rgcidr_scan = string.format("%.0fμs", rgcidr_result.execution_time_microseconds)
-				local grepcidr_scan = string.format("%.0fμs", grepcidr_result.execution_time_microseconds)
 				local rgcidr_full = string.format("%.0fμs", rgcidr_result.execution_time_with_output_microseconds)
-				local grepcidr_full = string.format("%.0fμs", grepcidr_result.execution_time_with_output_microseconds)
-
-				local scan_ratio = rgcidr_result.execution_time_microseconds
-					/ grepcidr_result.execution_time_microseconds
-				local full_ratio = rgcidr_result.execution_time_with_output_microseconds
-					/ grepcidr_result.execution_time_with_output_microseconds
-
+				
 				local pass_symbol = "✓"
 				local warning = ""
+				
+				if grepcidr_result then
+					-- Full comparison with grepcidr
+					local grepcidr_scan = string.format("%.0fμs", grepcidr_result.execution_time_microseconds)
+					local grepcidr_full = string.format("%.0fμs", grepcidr_result.execution_time_with_output_microseconds)
 
-				-- Check for statistical significance
-				local max_cv = math.max(
-					rgcidr_result.scan_cv,
-					grepcidr_result.scan_cv,
-					rgcidr_result.full_cv,
-					grepcidr_result.full_cv
-				)
-				if max_cv > 5.0 then
-					pass_symbol = "⚠"
-					warning = string.format(" (HIGH VARIANCE: %.1f%%)", max_cv)
-				end
+					local scan_ratio = rgcidr_result.execution_time_microseconds
+						/ grepcidr_result.execution_time_microseconds
+					local full_ratio = rgcidr_result.execution_time_with_output_microseconds
+						/ grepcidr_result.execution_time_with_output_microseconds
 
-				print(pass_symbol .. " " .. test_name .. " PASSED" .. warning)
-				print(
-					string.format(
-						"  Scanning only: rgcidr: %s (%.1f%% var), grepcidr: %s (%.1f%% var) [%.2fx]",
-						rgcidr_scan,
+					-- Check for statistical significance
+					local max_cv = math.max(
 						rgcidr_result.scan_cv,
-						grepcidr_scan,
 						grepcidr_result.scan_cv,
-						scan_ratio
-					)
-				)
-				print(
-					string.format(
-						"  With output:   rgcidr: %s (%.1f%% var), grepcidr: %s (%.1f%% var) [%.2fx]",
-						rgcidr_full,
 						rgcidr_result.full_cv,
-						grepcidr_full,
-						grepcidr_result.full_cv,
-						full_ratio
+						grepcidr_result.full_cv
 					)
-				)
+					if max_cv > 5.0 then
+						pass_symbol = "⚠"
+						warning = string.format(" (HIGH VARIANCE: %.1f%%)", max_cv)
+					end
+
+					print(pass_symbol .. " " .. test_name .. " PASSED" .. warning)
+					print(
+						string.format(
+							"  Scanning only: rgcidr: %s (%.1f%% var), grepcidr: %s (%.1f%% var) [%.2fx]",
+							rgcidr_scan,
+							rgcidr_result.scan_cv,
+							grepcidr_scan,
+							grepcidr_result.scan_cv,
+							scan_ratio
+						)
+					)
+					print(
+						string.format(
+							"  With output:   rgcidr: %s (%.1f%% var), grepcidr: %s (%.1f%% var) [%.2fx]",
+							rgcidr_full,
+							rgcidr_result.full_cv,
+							grepcidr_full,
+							grepcidr_result.full_cv,
+							full_ratio
+						)
+					)
+				else
+					-- rgcidr-only mode (no grepcidr comparison)
+					local max_cv = math.max(rgcidr_result.scan_cv, rgcidr_result.full_cv)
+					if max_cv > 5.0 then
+						pass_symbol = "⚠"
+						warning = string.format(" (HIGH VARIANCE: %.1f%%)", max_cv)
+					end
+					
+					print(pass_symbol .. " " .. test_name .. " PASSED" .. warning .. " (rgcidr-only)")
+					print(string.format("  Scanning only: %s (%.1f%% var)", rgcidr_scan, rgcidr_result.scan_cv))
+					print(string.format("  With output:   %s (%.1f%% var)", rgcidr_full, rgcidr_result.full_cv))
+				end
 			end
 			passed = passed + 1
 		else
@@ -373,7 +408,7 @@ local function run_test(test_name)
 							.. rgcidr_result.actual_exit_code
 					)
 				end
-				if not grepcidr_result.test_passed then
+				if grepcidr_result and not grepcidr_result.test_passed then
 					print(
 						"  grepcidr - Expected exit code: "
 							.. grepcidr_result.expected_exit_code

@@ -18,5 +18,7 @@ for i=1,COUNT do
   os.execute(string.format("%s %s %s > /dev/null", exe, pattern, infile))
 end
 local dt = os.clock()-t0
-print(string.format("Total time: %.3fs (%.3f s/run)", dt, dt/COUNT))
+local dt_us = dt * 1000000
+local avg_us = dt_us / COUNT
+print(string.format("Total time: %.1fμs/op (%.3fs total, %d runs)", avg_us, dt, COUNT))
 

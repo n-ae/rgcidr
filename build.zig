@@ -159,14 +159,21 @@ pub fn build(b: *std.Build) void {
     const test_all_step = b.step("test-all", "Run comprehensive test suite with all tests");
     test_all_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/test_unified.lua", "--all" }).step);
 
-    // --- Benchmark Commands ---
-    const bench_step = b.step("bench", "Run performance benchmarks");
-    bench_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/test_unified.lua", "--bench" }).step);
+    // --- Unified Benchmark Commands ---
+    const bench_step = b.step("bench", "Run unified performance benchmarks (quick)");
+    bench_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/benchmark_unified.lua", "--quick" }).step);
 
-    const bench_quick_step = b.step("bench-quick", "Run quick benchmarks");
-    bench_quick_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/test_unified.lua", "--bench-quick" }).step);
+    const bench_quick_step = b.step("bench-quick", "Run quick unified benchmarks");
+    bench_quick_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/benchmark_unified.lua", "--quick" }).step);
 
-    const bench_adv_step = b.step("bench-advanced", "Run advanced benchmark suite");
+    const bench_comprehensive_step = b.step("bench-comprehensive", "Run comprehensive unified benchmark suite");
+    bench_comprehensive_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/benchmark_unified.lua", "--comprehensive" }).step);
+
+    const bench_all_step = b.step("bench-all", "Run comprehensive benchmarks comparing all implementations");
+    bench_all_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/benchmark_unified.lua", "--comprehensive", "--compare-all" }).step);
+
+    // --- Legacy Benchmark Commands (for compatibility) ---
+    const bench_adv_step = b.step("bench-advanced", "Run advanced benchmark suite (legacy)");
     bench_adv_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/test_unified.lua", "--bench-advanced" }).step);
 
     const bench_realistic_step = b.step("bench-realistic", "Run realistic performance benchmarks");
@@ -182,11 +189,11 @@ pub fn build(b: *std.Build) void {
     const bench_realistic_run = b.addRunArtifact(bench_realistic_exe);
     bench_realistic_step.dependOn(&bench_realistic_run.step);
 
-    const bench_compare_step = b.step("bench-compare", "Compare performance with grepcidr");
-    bench_compare_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/test_unified.lua", "--bench-compare" }).step);
+    const bench_compare_step = b.step("bench-compare", "Compare performance with all implementations");
+    bench_compare_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/benchmark_unified.lua", "--comprehensive", "--compare-all" }).step);
 
-    const bench_regression_step = b.step("bench-regression", "Compare performance vs main branch");
-    bench_regression_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/test_unified.lua", "--regression" }).step);
+    const bench_regression_step = b.step("bench-regression", "Compare performance vs previous version");
+    bench_regression_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/benchmark_unified.lua", "--comprehensive", "--regression" }).step);
 
     // --- Profiling Commands ---
     const profile_step = b.step("profile", "Run Lua profiling script");
