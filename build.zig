@@ -241,6 +241,20 @@ pub fn build(b: *std.Build) void {
     const opt_bench_run = b.addRunArtifact(opt_bench_exe);
     opt_bench_step.dependOn(&opt_bench_run.step);
 
+    // Deep profiler for optimization analysis
+    const deep_prof_step = b.step("deep-prof", "Run deep performance profiler");
+    const deep_prof_exe = b.addExecutable(.{
+        .name = "deep_profiler",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("scripts/deep_profiler.zig"),
+            .target = target,
+            .optimize = .ReleaseFast,
+            .imports = &.{.{ .name = "rgcidr", .module = mod }},
+        }),
+    });
+    const deep_prof_run = b.addRunArtifact(deep_prof_exe);
+    deep_prof_step.dependOn(&deep_prof_run.step);
+
     const profile_detailed_step = b.step("profile-detailed", "Run detailed Zig profiling");
     const profile_exe = b.addExecutable(.{
         .name = "profile_detailed",

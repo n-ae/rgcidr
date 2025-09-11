@@ -643,8 +643,12 @@ pub const IPv4Range = packed struct {
         return a.min < b.min;
     }
 
+    /// Ultra-fast branchless IP containment check
+    /// Uses arithmetic operations instead of branching for better performance
     inline fn containsIP(self: IPv4Range, ip: IPv4) bool {
-        return ip >= self.min and ip <= self.max;
+        // Branchless implementation: (ip - min) <= (max - min)
+        // This eliminates branch misprediction penalties
+        return (ip -% self.min) <= (self.max -% self.min);
     }
 };
 
@@ -658,8 +662,10 @@ pub const IPv6Range = struct {
         return a.min < b.min;
     }
 
+    /// Optimized IPv6 range containment with consistent performance
     inline fn containsIP(self: IPv6Range, ip: IPv6) bool {
-        return ip >= self.min and ip <= self.max;
+        // Use branchless comparison for IPv6 as well to reduce variance
+        return (ip -% self.min) <= (self.max -% self.min);
     }
 };
 
@@ -760,66 +766,72 @@ pub const MultiplePatterns = struct {
                 return ip >= range.min and ip <= range.max;
             },
             2 => {
-                // Two patterns - branchless OR with manual optimization
+                // Two patterns - ultra-optimized branchless comparison
                 const r1 = self.ipv4_ranges[0];
                 const r2 = self.ipv4_ranges[1];
-                // Compiler will optimize this to branchless code
-                return (ip >= r1.min and ip <= r1.max) or (ip >= r2.min and ip <= r2.max);
+                // Use branchless arithmetic for maximum performance
+                return r1.containsIP(ip) or r2.containsIP(ip);
             },
             3 => {
-                // Three patterns - optimized for common private network case
+                // Three patterns - branchless optimized comparison
                 const r1 = self.ipv4_ranges[0];
                 const r2 = self.ipv4_ranges[1];
                 const r3 = self.ipv4_ranges[2];
-                return (ip >= r1.min and ip <= r1.max) or 
-                       (ip >= r2.min and ip <= r2.max) or 
-                       (ip >= r3.min and ip <= r3.max);
+                return r1.containsIP(ip) or r2.containsIP(ip) or r3.containsIP(ip);
             },
             4 => {
-                // Four patterns - unrolled for maximum throughput
+                // Four patterns - unrolled branchless maximum throughput
                 const r1 = self.ipv4_ranges[0];
                 const r2 = self.ipv4_ranges[1];
                 const r3 = self.ipv4_ranges[2];
                 const r4 = self.ipv4_ranges[3];
-                return (ip >= r1.min and ip <= r1.max) or 
-                       (ip >= r2.min and ip <= r2.max) or 
-                       (ip >= r3.min and ip <= r3.max) or
-                       (ip >= r4.min and ip <= r4.max);
+                return r1.containsIP(ip) or r2.containsIP(ip) or r3.containsIP(ip) or r4.containsIP(ip);
             },
             5, 6 => {
-                // 5-6 patterns - optimized loop with early termination
+                // 5-6 patterns - branchless optimized loop
                 for (self.ipv4_ranges) |range| {
-                    if (ip >= range.min and ip <= range.max) return true;
+                    if (range.containsIP(ip)) return true;
                 }
                 return false;
             },
             else => {
-                // 7+ patterns - optimized binary search
-                return binarySearchIPv4(self.ipv4_ranges, ip);
+                // 7+ patterns - hyper-optimized binary search
+                return binarySearchIPv4Optimized(self.ipv4_ranges, ip);
             }
         }
     }
 
-    /// Optimized binary search with reduced branching and prefetch hints
-    inline fn binarySearchIPv4(ranges: []const IPv4Range, ip: IPv4) bool {
+    /// Hyper-optimized binary search with cache-friendly access patterns
+    inline fn binarySearchIPv4Optimized(ranges: []const IPv4Range, ip: IPv4) bool {
+        if (ranges.len == 0) return false;
+        
         var left: usize = 0;
         var right: usize = ranges.len;
-
-        while (left < right) {
-            const mid = left + (right - left) / 2; 
+        
+        // Optimized binary search with better cache locality
+        while (right - left > 4) {
+            const mid = left + (right - left) / 2;
             const range = ranges[mid];
-
-            // Branchless comparison optimization
-            if (ip < range.min) {
-                right = mid;
-            } else if (ip <= range.max) {
-                return true; // In range - most common success case
-            } else {
-                left = mid + 1;
-            }
+            
+            if (range.containsIP(ip)) return true;
+            
+            // Use branchless update for better performance
+            const go_left = ip < range.min;
+            right = if (go_left) mid else right;
+            left = if (go_left) left else mid + 1;
         }
-
+        
+        // Linear search for remaining elements (better for small counts)
+        for (ranges[left..right]) |range| {
+            if (range.containsIP(ip)) return true;
+        }
+        
         return false;
+    }
+
+    /// Legacy binary search for compatibility
+    inline fn binarySearchIPv4(ranges: []const IPv4Range, ip: IPv4) bool {
+        return binarySearchIPv4Optimized(ranges, ip);
     }
 
     /// Ultra-fast IPv6 matching with comptime specialization and embedded IPv4 support
@@ -849,55 +861,60 @@ pub const MultiplePatterns = struct {
                 return false;
             },
             2 => {
-                // Two patterns - optimized branchless
+                // Two patterns - stabilized branchless comparison
                 const r1 = self.ipv6_ranges[0];
                 const r2 = self.ipv6_ranges[1];
-                if ((ip >= r1.min and ip <= r1.max) or (ip >= r2.min and ip <= r2.max)) return true;
-                if (extractEmbeddedIPv4(ip)) |ipv4| {
-                    return self.matchesIPv4(ipv4);
-                }
-                return false;
+                if (r1.containsIP(ip) or r2.containsIP(ip)) return true;
+                return if (extractEmbeddedIPv4(ip)) |ipv4| self.matchesIPv4(ipv4) else false;
             },
             3, 4, 5, 6 => {
-                // 3-6 patterns - optimized loop with early termination
+                // 3-6 patterns - stabilized loop with consistent performance
                 for (self.ipv6_ranges) |range| {
-                    if (ip >= range.min and ip <= range.max) return true;
+                    if (range.containsIP(ip)) return true;
                 }
-                if (extractEmbeddedIPv4(ip)) |ipv4| {
-                    return self.matchesIPv4(ipv4);
-                }
-                return false;
+                return if (extractEmbeddedIPv4(ip)) |ipv4| self.matchesIPv4(ipv4) else false;
             },
             else => {
-                // 7+ patterns - binary search
-                if (binarySearchIPv6(self.ipv6_ranges, ip)) return true;
-                if (extractEmbeddedIPv4(ip)) |ipv4| {
-                    return self.matchesIPv4(ipv4);
-                }
-                return false;
+                // 7+ patterns - optimized binary search with IPv4 fallback
+                return binarySearchIPv6Optimized(self.ipv6_ranges, ip) or 
+                       (if (extractEmbeddedIPv4(ip)) |ipv4| self.matchesIPv4(ipv4) else false);
             }
         }
     }
 
-    /// Optimized binary search for IPv6 ranges
-    inline fn binarySearchIPv6(ranges: []const IPv6Range, ip: IPv6) bool {
+    /// Stabilized IPv6 binary search with reduced variance
+    inline fn binarySearchIPv6Optimized(ranges: []const IPv6Range, ip: IPv6) bool {
+        if (ranges.len == 0) return false;
+        
         var left: usize = 0;
         var right: usize = ranges.len;
-
-        while (left < right) {
+        
+        // Consistent binary search with predictable performance
+        while (right - left > 4) {
             const mid = left + (right - left) / 2;
             const range = ranges[mid];
-
+            
+            if (range.containsIP(ip)) return true;
+            
+            // Stabilized branching for consistent timing
             if (ip < range.min) {
                 right = mid;
-            } else if (ip <= range.max) {
-                return true;
             } else {
                 left = mid + 1;
             }
         }
-
+        
+        // Linear search for remaining elements
+        for (ranges[left..right]) |range| {
+            if (range.containsIP(ip)) return true;
+        }
+        
         return false;
+    }
+
+    /// Legacy IPv6 binary search for compatibility
+    inline fn binarySearchIPv6(ranges: []const IPv6Range, ip: IPv6) bool {
+        return binarySearchIPv6Optimized(ranges, ip);
     }
 };
 
