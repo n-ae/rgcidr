@@ -827,6 +827,19 @@ pub const MultiplePatterns = struct {
 fn mergeOverlappingIPv4Ranges(ranges: []IPv4Range, allocator: Allocator) ![]IPv4Range {
     if (ranges.len <= 1) return ranges;
 
+    // Fast path: Check if merging is actually needed
+    var needs_merge = false;
+    for (ranges[0..ranges.len-1], ranges[1..]) |current, next| {
+        if (next.min <= current.max + 1) {
+            needs_merge = true;
+            break;
+        }
+    }
+    
+    // If no merging needed, return original array (common case)
+    if (!needs_merge) return ranges;
+
+    // Slow path: Actually merge ranges
     var merged = std.ArrayList(IPv4Range){};
     defer merged.deinit(allocator);
 
@@ -854,6 +867,19 @@ fn mergeOverlappingIPv4Ranges(ranges: []IPv4Range, allocator: Allocator) ![]IPv4
 fn mergeOverlappingIPv6Ranges(ranges: []IPv6Range, allocator: Allocator) ![]IPv6Range {
     if (ranges.len <= 1) return ranges;
 
+    // Fast path: Check if merging is actually needed
+    var needs_merge = false;
+    for (ranges[0..ranges.len-1], ranges[1..]) |current, next| {
+        if (next.min <= current.max + 1) {
+            needs_merge = true;
+            break;
+        }
+    }
+    
+    // If no merging needed, return original array (common case)
+    if (!needs_merge) return ranges;
+
+    // Slow path: Actually merge ranges
     var merged = std.ArrayList(IPv6Range){};
     defer merged.deinit(allocator);
 
