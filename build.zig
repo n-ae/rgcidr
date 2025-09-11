@@ -142,35 +142,71 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_mod_tests.step);
     test_step.dependOn(&run_exe_tests.step);
 
-    // --- Unified Test Runner ---
-    // New unified test system that consolidates all testing functionality
-    const test_unified_step = b.step("test-unified", "Run unified test suite (default: unit + functional)");
-    test_unified_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/test_unified.lua" }).step);
+    // --- Unified Test & Benchmark Runner ---
+    // New consolidated system that consolidates ALL testing and benchmarking functionality
+    const rgcidr_test_step = b.step("rgcidr-test", "Run rgcidr unified test & benchmark runner (default: development)");
+    rgcidr_test_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/rgcidr_test.lua" }).step);
+
+    // === TEST PRESETS ===
+    const test_ci_step = b.step("test-ci", "CI-friendly tests (unit, functional, quick benchmarks)");
+    test_ci_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/rgcidr_test.lua", "--ci" }).step);
+
+    const test_development_step = b.step("test-dev", "Developer tests (unit, functional, micro-benchmarks)");
+    test_development_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/rgcidr_test.lua", "--development" }).step);
+
+    const test_release_step = b.step("test-release", "Release validation (all tests, comprehensive benchmarks)");
+    test_release_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/rgcidr_test.lua", "--release" }).step);
+
+    const test_performance_step = b.step("test-performance", "Performance focus (all benchmarks, profiling, validation)");
+    test_performance_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/rgcidr_test.lua", "--performance" }).step);
+
+    const test_all_step = b.step("test-all", "Run everything (tests + comprehensive benchmarks)");
+    test_all_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/rgcidr_test.lua", "--all" }).step);
+
+    // === INDIVIDUAL TEST TYPES ===
+    const test_unit_step = b.step("test-unit", "Run Zig unit tests only");
+    test_unit_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/rgcidr_test.lua", "--unit" }).step);
 
     const test_functional_step = b.step("test-functional", "Run functional tests only");
-    test_functional_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/test_unified.lua", "--functional" }).step);
+    test_functional_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/rgcidr_test.lua", "--functional" }).step);
 
     const test_compare_step = b.step("test-compare", "Compare functionality with grepcidr");
-    test_compare_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/test_unified.lua", "--compare" }).step);
+    test_compare_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/rgcidr_test.lua", "--compare" }).step);
 
     const test_rfc_step = b.step("test-rfc", "Run RFC compliance tests");
-    test_rfc_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/test_unified.lua", "--rfc" }).step);
+    test_rfc_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/rgcidr_test.lua", "--rfc" }).step);
 
-    const test_all_step = b.step("test-all", "Run comprehensive test suite with all tests");
-    test_all_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/test_unified.lua", "--all" }).step);
+    // === BENCHMARK TYPES ===  
+    const bench_step = b.step("bench", "Run standard benchmarks");
+    bench_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/rgcidr_test.lua", "--bench" }).step);
 
-    // --- Unified Benchmark Commands ---
-    const bench_step = b.step("bench", "Run unified performance benchmarks (quick)");
-    bench_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/benchmark_unified.lua", "--quick" }).step);
+    const bench_quick_step = b.step("bench-quick", "Run quick benchmarks (5 runs each)");
+    bench_quick_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/rgcidr_test.lua", "--bench-quick" }).step);
 
-    const bench_quick_step = b.step("bench-quick", "Run quick unified benchmarks");
-    bench_quick_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/benchmark_unified.lua", "--quick" }).step);
+    const bench_comprehensive_step = b.step("bench-comprehensive", "Run comprehensive benchmarks (20+ runs)");
+    bench_comprehensive_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/rgcidr_test.lua", "--bench-comprehensive" }).step);
 
-    const bench_comprehensive_step = b.step("bench-comprehensive", "Run comprehensive unified benchmark suite");
-    bench_comprehensive_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/benchmark_unified.lua", "--comprehensive" }).step);
+    const bench_micro_step = b.step("bench-micro", "Run micro-benchmarks for optimization");
+    bench_micro_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/rgcidr_test.lua", "--bench-micro" }).step);
 
-    const bench_all_step = b.step("bench-all", "Run comprehensive benchmarks comparing all implementations");
-    bench_all_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/benchmark_unified.lua", "--comprehensive", "--compare-all" }).step);
+    const bench_statistical_step = b.step("bench-statistical", "Run statistical benchmarks (30 runs, outlier removal)");
+    bench_statistical_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/rgcidr_test.lua", "--bench-statistical" }).step);
+
+    const bench_validation_step = b.step("bench-validation", "Run optimization validation benchmarks");
+    bench_validation_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/rgcidr_test.lua", "--bench-validation" }).step);
+
+    // === PROFILING & ANALYSIS ===
+    const profile_step = b.step("profile", "Run performance profiling");
+    profile_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/rgcidr_test.lua", "--profile" }).step);
+
+    const profile_deep_step = b.step("profile-deep", "Run deep performance analysis");
+    profile_deep_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/rgcidr_test.lua", "--profile-deep" }).step);
+
+    const optimize_validate_step = b.step("optimize-validate", "Validate current optimizations");
+    optimize_validate_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/rgcidr_test.lua", "--optimize-validate" }).step);
+
+    const scaling_analysis_step = b.step("scaling-analysis", "Test scaling characteristics");
+    scaling_analysis_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/rgcidr_test.lua", "--scaling-analysis" }).step);
 
     // --- Legacy Benchmark Commands (for compatibility) ---
     const bench_adv_step = b.step("bench-advanced", "Run advanced benchmark suite (legacy)");
@@ -209,9 +245,9 @@ pub fn build(b: *std.Build) void {
     const bench_regression_step = b.step("bench-regression", "Compare performance vs previous version");
     bench_regression_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/benchmark_unified.lua", "--comprehensive", "--regression" }).step);
 
-    // --- Profiling Commands ---
-    const profile_step = b.step("profile", "Run Lua profiling script");
-    profile_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/profile.lua" }).step);
+    // --- Legacy Profiling Commands ---
+    const profile_legacy_step = b.step("profile-legacy", "Run legacy Lua profiling script");
+    profile_legacy_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/profile.lua" }).step);
 
     // Micro-benchmark for optimization testing
     const micro_bench_step = b.step("micro-bench", "Run micro-benchmarks for optimization analysis");
