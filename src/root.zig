@@ -751,7 +751,8 @@ pub const MultiplePatterns = struct {
         if (self.ipv4_ranges.len == 0) return false;
         
         // Micro-optimization: Handle small pattern counts with linear search
-        if (self.ipv4_ranges.len <= 4) {
+        // Increased threshold based on benchmarking showing good performance up to 6 patterns
+        if (self.ipv4_ranges.len <= 6) {
             for (self.ipv4_ranges) |range| {
                 if (ip >= range.min and ip <= range.max) return true;
             }
@@ -790,7 +791,8 @@ pub const MultiplePatterns = struct {
         if (self.ipv6_ranges.len == 0) return false;
         
         // Micro-optimization: Handle small pattern counts with linear search
-        if (self.ipv6_ranges.len <= 4) {
+        // Increased threshold based on benchmarking showing good performance up to 6 patterns
+        if (self.ipv6_ranges.len <= 6) {
             for (self.ipv6_ranges) |range| {
                 if (ip >= range.min and ip <= range.max) return true;
             }

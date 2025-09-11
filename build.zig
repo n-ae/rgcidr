@@ -189,6 +189,20 @@ pub fn build(b: *std.Build) void {
     const bench_realistic_run = b.addRunArtifact(bench_realistic_exe);
     bench_realistic_step.dependOn(&bench_realistic_run.step);
 
+    // Profile large dataset performance
+    const profile_large_step = b.step("profile-large", "Profile large dataset performance bottlenecks");
+    const profile_large_exe = b.addExecutable(.{
+        .name = "profile_large_dataset",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("scripts/profile_large_dataset.zig"),
+            .target = target,
+            .optimize = .ReleaseFast,
+            .imports = &.{.{ .name = "rgcidr", .module = mod }},
+        }),
+    });
+    const profile_large_run = b.addRunArtifact(profile_large_exe);
+    profile_large_step.dependOn(&profile_large_run.step);
+
     const bench_compare_step = b.step("bench-compare", "Compare performance with all implementations");
     bench_compare_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/benchmark_unified.lua", "--comprehensive", "--compare-all" }).step);
 

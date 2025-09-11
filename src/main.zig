@@ -31,6 +31,20 @@ const ExitCode = enum(u8) {
     }
 };
 
+// Fast IPv4 field character lookup table - optimization for line scanning
+const IPV4_FIELD_LOOKUP: [256]bool = blk: {
+    var lookup = [_]bool{false} ** 256;
+    // Allow digits 0-9
+    for ('0'..'9' + 1) |c| lookup[c] = true;
+    // Allow uppercase letters A-Z  
+    for ('A'..'Z' + 1) |c| lookup[c] = true;
+    // Allow lowercase letters a-z
+    for ('a'..'z' + 1) |c| lookup[c] = true;
+    // Allow dot
+    lookup['.'] = true;
+    break :blk lookup;
+};
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -411,8 +425,8 @@ fn scanLineForMatchWithEarlyExit(line: []const u8, patterns: rgcidr.MultiplePatt
             var j = i;
             while (j < line.len) {
                 const c = line[j];
-                // IPV4_FIELD = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz."
-                if (!((c >= '0' and c <= '9') or (c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z') or c == '.')) {
+                // Fast lookup table for IPv4 field characters - much faster than multiple range checks
+                if (!IPV4_FIELD_LOOKUP[c]) {
                     break;
                 }
                 j += 1;
