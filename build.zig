@@ -142,25 +142,33 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_mod_tests.step);
     test_step.dependOn(&run_exe_tests.step);
 
-    // --- Lua helper steps (profiling & benchmarks) ---
-    const profile_step = b.step("profile", "Run Lua profiling script");
-    profile_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/profile.lua" }).step);
+    // --- Unified Test Runner ---
+    // New unified test system that consolidates all testing functionality
+    const test_unified_step = b.step("test-unified", "Run unified test suite (default: unit + functional)");
+    test_unified_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/test_unified.lua" }).step);
 
-    // Zig-based detailed profiling
-    const profile_detailed_step = b.step("profile-detailed", "Run detailed Zig profiling");
-    const profile_exe = b.addExecutable(.{
-        .name = "profile_detailed",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("scripts/profile_detailed.zig"),
-            .target = target,
-            .optimize = .ReleaseFast,
-            .imports = &.{.{ .name = "rgcidr", .module = mod }},
-        }),
-    });
-    const profile_run = b.addRunArtifact(profile_exe);
-    profile_detailed_step.dependOn(&profile_run.step);
+    const test_functional_step = b.step("test-functional", "Run functional tests only");
+    test_functional_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/test_unified.lua", "--functional" }).step);
 
-    // Realistic benchmark
+    const test_compare_step = b.step("test-compare", "Compare functionality with grepcidr");
+    test_compare_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/test_unified.lua", "--compare" }).step);
+
+    const test_rfc_step = b.step("test-rfc", "Run RFC compliance tests");
+    test_rfc_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/test_unified.lua", "--rfc" }).step);
+
+    const test_all_step = b.step("test-all", "Run comprehensive test suite with all tests");
+    test_all_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/test_unified.lua", "--all" }).step);
+
+    // --- Benchmark Commands ---
+    const bench_step = b.step("bench", "Run performance benchmarks");
+    bench_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/test_unified.lua", "--bench" }).step);
+
+    const bench_quick_step = b.step("bench-quick", "Run quick benchmarks");
+    bench_quick_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/test_unified.lua", "--bench-quick" }).step);
+
+    const bench_adv_step = b.step("bench-advanced", "Run advanced benchmark suite");
+    bench_adv_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/test_unified.lua", "--bench-advanced" }).step);
+
     const bench_realistic_step = b.step("bench-realistic", "Run realistic performance benchmarks");
     const bench_realistic_exe = b.addExecutable(.{
         .name = "benchmark_realistic",
@@ -174,30 +182,33 @@ pub fn build(b: *std.Build) void {
     const bench_realistic_run = b.addRunArtifact(bench_realistic_exe);
     bench_realistic_step.dependOn(&bench_realistic_run.step);
 
-    const bench_step = b.step("bench", "Run micro-benchmark (Lua)");
-    bench_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/bench_early_exit.lua" }).step);
-
-    const bench_adv_step = b.step("bench-advanced", "Run advanced benchmark suite (Lua)");
-    bench_adv_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/bench_advanced.lua" }).step);
+    const bench_compare_step = b.step("bench-compare", "Compare performance with grepcidr");
+    bench_compare_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/test_unified.lua", "--bench-compare" }).step);
 
     const bench_regression_step = b.step("bench-regression", "Compare performance vs main branch");
-    bench_regression_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/bench_regression.lua" }).step);
+    bench_regression_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/test_unified.lua", "--regression" }).step);
 
-    // Comprehensive testing
-    const test_all_step = b.step("test-all", "Run comprehensive test suite with grepcidr comparison");
-    test_all_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/test_all.lua" }).step);
+    // --- Profiling Commands ---
+    const profile_step = b.step("profile", "Run Lua profiling script");
+    profile_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/profile.lua" }).step);
 
-    const compare_step = b.step("compare", "Compare functionality with grepcidr");
+    const profile_detailed_step = b.step("profile-detailed", "Run detailed Zig profiling");
+    const profile_exe = b.addExecutable(.{
+        .name = "profile_detailed",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("scripts/profile_detailed.zig"),
+            .target = target,
+            .optimize = .ReleaseFast,
+            .imports = &.{.{ .name = "rgcidr", .module = mod }},
+        }),
+    });
+    const profile_run = b.addRunArtifact(profile_exe);
+    profile_detailed_step.dependOn(&profile_run.step);
+
+    // --- Legacy Test Commands (maintained for compatibility) ---
+    // These now delegate to the unified test runner for consistency
+    const compare_step = b.step("compare", "Compare functionality with grepcidr (legacy)");
     compare_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/test_compare.lua" }).step);
-
-    const bench_compare_step = b.step("bench-compare", "Benchmark against grepcidr");
-    bench_compare_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/bench_compare.lua" }).step);
-
-    // --- Additional test and benchmark steps ---
-    
-    // RFC compliance test
-    const test_rfc_step = b.step("test-rfc", "Run RFC compliance tests");
-    test_rfc_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/test_rfc.lua" }).step);
 
     // Just like flags, top level steps are also listed in the `--help` menu.
     //

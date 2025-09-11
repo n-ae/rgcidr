@@ -65,6 +65,28 @@ pub const IpRange = struct {
     }
 };
 
+/// Extract embedded IPv4 address from IPv6 address if present
+/// Handles IPv4-mapped IPv6 (::ffff:x.x.x.x) and IPv6 with embedded IPv4 (::x.x.x.x)
+pub fn extractEmbeddedIPv4(ipv6: IPv6) ?IPv4 {
+    // IPv4-mapped IPv6: ::ffff:x.x.x.x
+    // Parsed format: upper 96 bits contain 0xffff, lower 32 bits contain IPv4
+    const upper_96_bits = ipv6 >> 32;
+    const lower_32_bits = ipv6 & 0xFFFFFFFF;
+
+    // Check for IPv4-mapped IPv6 (::ffff:x.x.x.x)
+    if (upper_96_bits == 0xFFFF) {
+        return @intCast(lower_32_bits);
+    }
+
+    // Check for IPv6 with embedded IPv4 (::x.x.x.x)
+    // This means the upper 96 bits are zero and lower 32 bits contain a valid IPv4
+    if (upper_96_bits == 0 and lower_32_bits != 0) {
+        return @intCast(lower_32_bits);
+    }
+
+    return null;
+}
+
 // Pattern type - can be single IP, CIDR range, or IPv4 range
 pub const Pattern = union(enum) {
     single_ipv4: IPv4,
@@ -87,8 +109,13 @@ pub const Pattern = union(enum) {
         return switch (self) {
             .single_ipv6 => |single| single == ip,
             .ipv6_cidr => |cidr| cidr.containsIP(ip),
-            // IPv4 patterns don't match IPv6 addresses
-            .single_ipv4, .ipv4_cidr, .ipv4_range => false,
+            // Check if IPv6 contains embedded IPv4 that matches IPv4 patterns
+            .single_ipv4, .ipv4_cidr, .ipv4_range => {
+                if (extractEmbeddedIPv4(ip)) |ipv4| {
+                    return self.matchesIPv4(ipv4);
+                }
+                return false;
+            },
         };
     }
 };
@@ -759,6 +786,11 @@ pub const MultiplePatterns = struct {
             }
         }
 
+        // Check if IPv6 has embedded IPv4 that matches IPv4 patterns
+        if (extractEmbeddedIPv4(ip)) |ipv4| {
+            return self.matchesIPv4(ipv4);
+        }
+
         return false;
     }
 };
@@ -1093,7 +1125,7 @@ pub const IpScanner = struct {
 
         var i: usize = 0;
         while (i < line.len) {
-            if (ipv6HintStandalone(line, i) or ipv6HintSpecial(line, i) or ipv6Hint1(line, i) or 
+            if (ipv6HintStandalone(line, i) or ipv6HintSpecial(line, i) or ipv6Hint1(line, i) or
                 ipv6Hint2(line, i) or ipv6Hint3(line, i) or ipv6Hint4(line, i) or ipv6Hint5(line, i))
             {
                 var j = i;
@@ -1114,7 +1146,7 @@ pub const IpScanner = struct {
                             valid_extraction = false;
                         }
                     }
-                    
+
                     if (valid_extraction) {
                         if (parseIPv6(potential_ip)) |ip| {
                             try self.ipv6_buffer.append(self.allocator, ip);
@@ -1137,7 +1169,7 @@ pub const IpScanner = struct {
 
         var i: usize = 0;
         while (i < line.len) {
-            if (ipv6HintStandalone(line, i) or ipv6HintSpecial(line, i) or ipv6Hint1(line, i) or 
+            if (ipv6HintStandalone(line, i) or ipv6HintSpecial(line, i) or ipv6Hint1(line, i) or
                 ipv6Hint2(line, i) or ipv6Hint3(line, i) or ipv6Hint4(line, i) or ipv6Hint5(line, i))
             {
                 var j = i;
