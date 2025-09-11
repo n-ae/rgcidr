@@ -1,5 +1,5 @@
 const std = @import("std");
-l
+const builtin = @import("builtin");
 const rgcidr = @import("rgcidr");
 const print = std.debug.print;
 const Allocator = std.mem.Allocator;
