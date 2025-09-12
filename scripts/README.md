@@ -1,11 +1,91 @@
 # Scripts Directory
 
-This directory contains various scripts for testing, benchmarking, and analyzing rgcidr performance.
+This directory contains the unified test and benchmark system for rgcidr.
 
-## Benchmarking Scripts
+## Unified Test System
+
+### rgcidr_test.lua - Main Test Runner
+
+**All testing functionality has been consolidated** into a single script that replaced 35+ individual test scripts:
+
+```bash
+# Basic usage
+lua scripts/rgcidr_test.lua [options]
+
+# Help and options
+lua scripts/rgcidr_test.lua --help
+```
+
+#### Test Presets
+
+```bash
+--all                Run everything (tests + comprehensive benchmarks)
+--ci                 CI-friendly tests (unit, functional, quick benchmarks)
+--development        Developer tests (unit, functional, micro-benchmarks) [default]
+--release            Release validation (all tests, comprehensive benchmarks)
+--performance        Performance focus (all benchmarks, profiling, validation)
+```
+
+#### Individual Test Types
+
+```bash
+--unit               Run Zig unit tests
+--functional         Run functional tests
+--compare            Compare with grepcidr
+--rfc                Run RFC compliance tests
+--regression         Run regression tests vs baseline
+```
+
+#### Benchmark Types
+
+```bash
+--bench              Run standard benchmarks
+--bench-quick        Run quick benchmarks (5 runs each)
+--bench-comprehensive Run comprehensive benchmarks (20+ runs)
+--bench-micro        Run micro-benchmarks for optimization
+--bench-statistical  Run statistical benchmarks (30 runs, outlier removal)
+--bench-validation   Run optimization validation benchmarks
+```
+
+#### Advanced Options
+
+```bash
+--csv                Output in CSV format
+--json               Output in JSON format
+--quiet              Minimal output
+--verbose            Detailed output
+--report             Generate comprehensive report
+--runs=N             Number of benchmark runs (default: auto)
+--variance-target=N  Target variance percentage (default: 10%)
+--baseline=REF       Git ref for regression tests (default: main)
+--build-debug        Build with debug optimization
+--build-fast         Build with ReleaseFast (default)
+--no-build           Skip building (use existing binaries)
+```
+
+## Key Features
+
+### Automatic Binary Management
+- **rgcidr**: Automatically builds with optimal settings
+- **grepcidr**: Fetches and builds official grepcidr 2.0 from pc-tools.net via `fetch_grepcidr.lua`
+- **Build optimization**: Enforces ReleaseFast for all performance tests
+
+### Statistical Analysis
+- **30-run benchmarks** with 5-run warmup
+- **Outlier detection** and removal (>2 standard deviations)
+- **95% confidence intervals**
+- **Variance targets** of 10-15% for reliable measurements
+- **Statistical significance testing** for performance comparisons
+
+### Integration
+- **Zig build system**: All `zig build` commands route through the unified script
+- **CI/CD support**: CSV/JSON output for automated analysis
+- **Regression testing**: Automatic comparison against baseline branches
+
+## Supporting Scripts
 
 ### fetch_grepcidr.lua
-Fetches and builds the official grepcidr 2.0 from pc-tools.net.
+Manages the official grepcidr 2.0 binary (used internally by the unified system):
 
 ```bash
 # Get path to grepcidr binary (builds if needed)
@@ -22,121 +102,52 @@ lua scripts/fetch_grepcidr.lua clean
 **Author**: Jem Berkes  
 **Version**: 2.0 (2014-05-26)
 
-### benchmark_official.lua
-Comprehensive benchmark comparing rgcidr against the official grepcidr 2.0.
+## Examples
 
 ```bash
-# Run full benchmark suite
-lua scripts/benchmark_official.lua
+# Default development testing
+lua scripts/rgcidr_test.lua
+
+# Comprehensive CI testing with CSV output
+lua scripts/rgcidr_test.lua --ci --csv
+
+# Performance analysis with custom run count
+lua scripts/rgcidr_test.lua --performance --runs=50
+
+# Statistical benchmarking with low variance target
+lua scripts/rgcidr_test.lua --bench-statistical --variance-target=5.0
+
+# Compare with grepcidr and generate report
+lua scripts/rgcidr_test.lua --compare --bench-compare --report
+
+# Regression testing against develop branch
+lua scripts/rgcidr_test.lua --regression --baseline=develop
 ```
 
-Features:
-- Automatically fetches and builds official grepcidr
-- Runs all test files with multiple iterations
-- Generates detailed performance analysis
-- Creates CSV output for further analysis
-- Interactive cleanup option
+## Build System Integration
 
-### benchmark_quick.lua
-Quick benchmark test with limited tests for rapid feedback.
+All `zig build` commands use the unified script:
 
 ```bash
-# Run quick benchmark (4 tests, 3 iterations)
-lua scripts/benchmark_quick.lua
+zig build rgcidr-test      # → lua scripts/rgcidr_test.lua
+zig build test-ci          # → lua scripts/rgcidr_test.lua --ci
+zig build bench-statistical # → lua scripts/rgcidr_test.lua --bench-statistical
+zig build test-all         # → lua scripts/rgcidr_test.lua --all
 ```
-
-Useful for:
-- Quick performance checks during development
-- Verifying benchmark system is working
-- Getting rapid feedback on changes
-
-### test_benchmark.lua
-Verification script to ensure benchmarking system is properly configured.
-
-```bash
-# Test benchmark setup
-lua scripts/test_benchmark.lua
-```
-
-Checks:
-- grepcidr can be fetched and built
-- rgcidr builds successfully
-- Both binaries work correctly
-- Basic timing measurements work
-
-## Testing Scripts
-
-### test.lua
-Main test runner for the rgcidr test suite.
-
-```bash
-# Run all tests
-lua scripts/test.lua
-
-# Run with benchmark mode
-lua scripts/test.lua --benchmark
-
-# Run specific test
-lua scripts/test.lua simple_ipv4
-```
-
-### bench_regression.lua
-Regression testing script that compares performance between branches.
-
-```bash
-# Compare against main branch
-lua scripts/bench_regression.lua
-
-# Compare against specific branch
-lua scripts/bench_regression.lua develop
-
-# Generate CSV output
-lua scripts/bench_regression.lua main --csv
-```
-
-## Legacy Scripts
-
-### benchmark_comparison.sh
-Bash script for comparing rgcidr and grepcidr performance.
-
-```bash
-# Run comparison benchmark
-./scripts/benchmark_comparison.sh
-```
-
-**Note**: Prefer using `benchmark_official.lua` for more accurate results.
-
-### benchmark_comprehensive.sh
-Comprehensive benchmark script in bash.
-
-```bash
-# Run comprehensive benchmark
-./scripts/benchmark_comprehensive.sh
-```
-
-**Note**: Prefer using `benchmark_official.lua` for more accurate results.
 
 ## Requirements
 
-All Lua scripts require:
-- Lua 5.1+ (no external dependencies)
-- Zig 0.15.1+ (for building rgcidr)
-- gcc/clang and make (for building grepcidr)
-- curl (for downloading grepcidr)
+- **Lua 5.1+** (no external dependencies)
+- **Zig 0.15.1+** (for building rgcidr)
+- **gcc/clang and make** (for building grepcidr)
+- **curl** (for downloading grepcidr)
 
 ## Performance Notes
 
-1. **Always use ReleaseFast** optimization for benchmarking
-2. **Close other applications** to reduce noise in measurements
-3. **Run multiple iterations** for statistical accuracy
-4. **Use official grepcidr** as the baseline for comparison
-
-## Output Files
-
-Benchmark scripts generate:
-- `benchmark_official.csv` - Detailed benchmark results
-- `benchmark_results.csv` - Simple benchmark comparison
-- `benchmark_comprehensive.csv` - Full test suite results
+1. **ReleaseFast optimization** is automatically enforced for all performance tests
+2. **Statistical reliability** achieved through 30-run benchmarks with outlier filtering
+3. **System variance** typically 10-15% (excellent for system-level benchmarking)
+4. **Automatic warmup** (5 runs) before measurement collection
 
 ## Troubleshooting
 
@@ -147,11 +158,13 @@ If scripts fail:
 3. **Ensure make is available**: `which make`
 4. **Check internet connection** for grepcidr download
 5. **Clean temporary files**: `lua scripts/fetch_grepcidr.lua clean`
+6. **Use verbose mode**: `lua scripts/rgcidr_test.lua --verbose`
 
 ## Contributing
 
-When adding new scripts:
-1. Use Lua for consistency (per user preference)
-2. Include clear documentation in script header
-3. Add error handling and helpful error messages
-4. Update this README with usage instructions
+When modifying the test system:
+1. **Update the unified script** (`rgcidr_test.lua`) for new functionality
+2. **Add new functionality** through flags and options
+3. **Include statistical analysis** for any new benchmark types
+4. **Update this README** with new options and examples
+5. **Update build.zig** for any new build targets

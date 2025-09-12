@@ -208,106 +208,13 @@ pub fn build(b: *std.Build) void {
     const scaling_analysis_step = b.step("scaling-analysis", "Test scaling characteristics");
     scaling_analysis_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/rgcidr_test.lua", "--scaling-analysis" }).step);
 
-    // --- Legacy Benchmark Commands (for compatibility) ---
-    const bench_adv_step = b.step("bench-advanced", "Run advanced benchmark suite (legacy)");
-    bench_adv_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/test_unified.lua", "--bench-advanced" }).step);
-
-    const bench_realistic_step = b.step("bench-realistic", "Run realistic performance benchmarks");
-    const bench_realistic_exe = b.addExecutable(.{
-        .name = "benchmark_realistic",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("scripts/benchmark_realistic.zig"),
-            .target = target,
-            .optimize = .ReleaseFast,
-            .imports = &.{.{ .name = "rgcidr", .module = mod }},
-        }),
-    });
-    const bench_realistic_run = b.addRunArtifact(bench_realistic_exe);
-    bench_realistic_step.dependOn(&bench_realistic_run.step);
-
-    // Profile large dataset performance
-    const profile_large_step = b.step("profile-large", "Profile large dataset performance bottlenecks");
-    const profile_large_exe = b.addExecutable(.{
-        .name = "profile_large_dataset",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("scripts/profile_large_dataset.zig"),
-            .target = target,
-            .optimize = .ReleaseFast,
-            .imports = &.{.{ .name = "rgcidr", .module = mod }},
-        }),
-    });
-    const profile_large_run = b.addRunArtifact(profile_large_exe);
-    profile_large_step.dependOn(&profile_large_run.step);
-
-    const bench_compare_step = b.step("bench-compare", "Compare performance with all implementations");
-    bench_compare_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/benchmark_unified.lua", "--comprehensive", "--compare-all" }).step);
+    // --- Additional Benchmark Commands ---
+    const bench_compare_step = b.step("bench-compare", "Compare performance with grepcidr");
+    bench_compare_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/rgcidr_test.lua", "--bench-compare" }).step);
 
     const bench_regression_step = b.step("bench-regression", "Compare performance vs previous version");
-    bench_regression_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/benchmark_unified.lua", "--comprehensive", "--regression" }).step);
+    bench_regression_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/rgcidr_test.lua", "--regression" }).step);
 
-    // --- Legacy Profiling Commands ---
-    const profile_legacy_step = b.step("profile-legacy", "Run legacy Lua profiling script");
-    profile_legacy_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/profile.lua" }).step);
-
-    // Micro-benchmark for optimization testing
-    const micro_bench_step = b.step("micro-bench", "Run micro-benchmarks for optimization analysis");
-    const micro_bench_exe = b.addExecutable(.{
-        .name = "micro_benchmark",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("scripts/micro_benchmark.zig"),
-            .target = target,
-            .optimize = .ReleaseFast,
-            .imports = &.{.{ .name = "rgcidr", .module = mod }},
-        }),
-    });
-    const micro_bench_run = b.addRunArtifact(micro_bench_exe);
-    micro_bench_step.dependOn(&micro_bench_run.step);
-
-    // Optimization strategy benchmark
-    const opt_bench_step = b.step("opt-bench", "Run optimization strategy benchmarks");
-    const opt_bench_exe = b.addExecutable(.{
-        .name = "optimization_benchmark",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("scripts/optimization_benchmark.zig"),
-            .target = target,
-            .optimize = .ReleaseFast,
-            .imports = &.{.{ .name = "rgcidr", .module = mod }},
-        }),
-    });
-    const opt_bench_run = b.addRunArtifact(opt_bench_exe);
-    opt_bench_step.dependOn(&opt_bench_run.step);
-
-    // Deep profiler for optimization analysis
-    const deep_prof_step = b.step("deep-prof", "Run deep performance profiler");
-    const deep_prof_exe = b.addExecutable(.{
-        .name = "deep_profiler",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("scripts/deep_profiler.zig"),
-            .target = target,
-            .optimize = .ReleaseFast,
-            .imports = &.{.{ .name = "rgcidr", .module = mod }},
-        }),
-    });
-    const deep_prof_run = b.addRunArtifact(deep_prof_exe);
-    deep_prof_step.dependOn(&deep_prof_run.step);
-
-    const profile_detailed_step = b.step("profile-detailed", "Run detailed Zig profiling");
-    const profile_exe = b.addExecutable(.{
-        .name = "profile_detailed",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("scripts/profile_detailed.zig"),
-            .target = target,
-            .optimize = .ReleaseFast,
-            .imports = &.{.{ .name = "rgcidr", .module = mod }},
-        }),
-    });
-    const profile_run = b.addRunArtifact(profile_exe);
-    profile_detailed_step.dependOn(&profile_run.step);
-
-    // --- Legacy Test Commands (maintained for compatibility) ---
-    // These now delegate to the unified test runner for consistency
-    const compare_step = b.step("compare", "Compare functionality with grepcidr (legacy)");
-    compare_step.dependOn(&b.addSystemCommand(&.{ "lua", "scripts/test_compare.lua" }).step);
 
     // Just like flags, top level steps are also listed in the `--help` menu.
     //

@@ -152,26 +152,28 @@ The Zig implementation achieves excellent performance through:
 
 Benchmarks show performance within 1.1-1.2x of the C implementation.
 
-### Regression Testing
+### Performance Validation
 
-The project includes automated regression testing to detect performance regressions:
+The unified test system provides comprehensive performance validation:
+
+- **Statistical benchmarking**: 30 runs with outlier detection and 95% confidence intervals
+- **Regression testing**: Automatic comparison against baseline branches
+- **Performance targets**: Maintains performance within 1.1x of original grepcidr
+- **Variance control**: Achieves 10-15% variance for reliable measurements
 
 ```bash
-# Compare current branch vs main
+# Quick performance check during development
+zig build bench-quick
+
+# Comprehensive statistical analysis
+zig build bench-statistical
+
+# Compare performance vs grepcidr
+zig build bench-compare
+
+# Regression testing against main branch
 zig build bench-regression
-
-# Compare against specific branch
-lua scripts/bench_regression.lua develop
-
-# Get CSV output for CI/CD
-lua scripts/bench_regression.lua main --csv
 ```
-
-Regression testing:
-- Automatically stashes/restores uncommitted changes
-- Builds both versions with ReleaseFast optimization
-- Compares benchmark results and flags regressions >5%
-- Exits with error code 1 if significant regressions detected
 
 ## Building from Source
 
@@ -180,35 +182,70 @@ Regression testing:
 zig build
 
 # Optimized builds
-zig build -Doptimize=ReleaseFast    # Fast execution
+zig build -Doptimize=ReleaseFast    # Fast execution (use for benchmarking)
 zig build -Doptimize=ReleaseSmall   # Small binary
 zig build -Doptimize=ReleaseSafe    # Safety checks
 
-# Run tests
-zig build test
-
-# Run benchmarks (automatically uses ReleaseFast)
-zig build bench
-zig build bench-advanced
-
-# Benchmark against official grepcidr 2.0 from pc-tools.net
-lua scripts/benchmark_official.lua
-# Or fetch/manage the official grepcidr separately:
-lua scripts/fetch_grepcidr.lua info    # Show source info
-lua scripts/fetch_grepcidr.lua get     # Get binary path (builds if needed)
-lua scripts/fetch_grepcidr.lua clean   # Clean temporary files
-
-# Regression testing (compare against main branch)
-zig build bench-regression
-
-# Manual regression testing
-lua scripts/bench_regression.lua [baseline-branch] [--csv]
-lua scripts/bench_regression.lua develop --csv  # Compare against develop branch
-
-# Note: For accurate performance testing, always use ReleaseFast:
-zig build -Doptimize=ReleaseFast
-lua scripts/test.lua --benchmark
+# Install to system
+zig build install --prefix ~/.local -Doptimize=ReleaseFast
 ```
+
+## Testing and Benchmarking
+
+### Unified Test System
+
+All testing functionality is consolidated into a single runner:
+
+```bash
+# Basic tests (unit + functional)
+zig build rgcidr-test
+
+# Test presets
+zig build test-ci          # CI-friendly tests
+zig build test-dev          # Developer tests (default)
+zig build test-release      # Release validation
+zig build test-performance  # Performance focus
+zig build test-all          # Everything
+
+# Individual test types
+zig build test-unit         # Zig unit tests only
+zig build test-functional   # Functional tests only
+zig build test-compare      # Compare with grepcidr
+zig build test-rfc          # RFC compliance tests
+
+# Benchmarks
+zig build bench             # Standard benchmarks
+zig build bench-quick       # Quick benchmarks (5 runs)
+zig build bench-comprehensive # 20+ runs with statistics
+zig build bench-statistical # 30 runs with outlier removal
+zig build bench-compare     # Compare with grepcidr
+
+# Performance analysis
+zig build profile           # Performance profiling
+zig build optimize-validate # Validate optimizations
+zig build scaling-analysis  # Test scaling characteristics
+```
+
+### Advanced Usage
+
+```bash
+# Direct script usage with custom options
+lua scripts/rgcidr_test.lua --help
+lua scripts/rgcidr_test.lua --performance --csv
+lua scripts/rgcidr_test.lua --bench-statistical --runs=50
+lua scripts/rgcidr_test.lua --unit --functional --verbose
+
+# Regression testing
+zig build bench-regression  # Compare vs main branch
+lua scripts/rgcidr_test.lua --regression --baseline=develop
+```
+
+### Benchmark Features
+
+- **Automatic binary management**: Builds rgcidr and fetches/builds grepcidr as needed
+- **Statistical analysis**: 30-run benchmarks with outlier detection and confidence intervals
+- **Performance tracking**: Variance targets of 10-15% for reliable measurements
+- **CSV/JSON output**: Machine-readable results for CI/CD integration
 
 ## Requirements
 

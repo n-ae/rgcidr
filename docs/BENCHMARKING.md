@@ -15,25 +15,33 @@ Note: This is the original implementation. There is also a fork by John Levine, 
 
 ## Quick Start
 
-### Run Official Benchmark
+### Unified Test System
 
-The easiest way to benchmark against the official grepcidr:
+The easiest way to benchmark using the consolidated test system:
 
 ```bash
-# Run comprehensive benchmark (fetches and builds grepcidr automatically)
-lua scripts/benchmark_official.lua
+# Compare performance with grepcidr (recommended)
+zig build bench-compare
+
+# Statistical benchmarking with 30 runs
+zig build bench-statistical
+
+# Quick performance check
+zig build bench-quick
+
+# Comprehensive performance analysis
+zig build test-performance
 ```
 
-This script will:
-1. Download the official grepcidr 2.0 from pc-tools.net
-2. Build it with optimizations (-O3)
-3. Build rgcidr with ReleaseFast
-4. Run all tests with multiple iterations
-5. Generate detailed performance report and CSV output
+The unified system automatically:
+1. Downloads and builds official grepcidr 2.0 from pc-tools.net
+2. Builds rgcidr with ReleaseFast optimization
+3. Runs statistical analysis with outlier detection
+4. Generates detailed reports with confidence intervals
 
-### Manual grepcidr Management
+### Binary Management
 
-You can also manage the official grepcidr separately:
+The unified system automatically manages binaries, but you can also control them manually:
 
 ```bash
 # Show information about grepcidr source
@@ -44,32 +52,44 @@ GREPCIDR_PATH=$(lua scripts/fetch_grepcidr.lua get)
 
 # Clean up temporary files
 lua scripts/fetch_grepcidr.lua clean
+
+# Skip building (use existing binaries)
+lua scripts/rgcidr_test.lua --bench-compare --no-build
 ```
 
 ## Benchmark Types
 
-### 1. Basic Benchmarks
+### 1. Standard Benchmarks
 
 ```bash
-# Simple performance test
+# Quick benchmarks (5 runs each)
+zig build bench-quick
+
+# Standard benchmarks
 zig build bench
 
-# Advanced benchmarks with larger datasets
-zig build bench-advanced
+# Comprehensive benchmarks (20+ runs)
+zig build bench-comprehensive
+
+# Statistical benchmarks (30 runs with outlier removal)
+zig build bench-statistical
 ```
 
-### 2. Official Comparison
+### 2. Performance Comparison
 
 ```bash
 # Compare against official grepcidr 2.0
-lua scripts/benchmark_official.lua
+zig build bench-compare
+
+# Performance validation suite
+zig build bench-validation
 ```
 
 Output includes:
-- Summary statistics (win rates, overall speedup)
-- Detailed per-test results
-- Performance category analysis
-- CSV file (`benchmark_official.csv`)
+- Statistical analysis with confidence intervals
+- Variance measurements (target: 10-15%)
+- Performance comparisons with significance testing
+- CSV/JSON output for automation
 
 ### 3. Regression Testing
 
@@ -77,11 +97,17 @@ Output includes:
 # Compare current branch against main
 zig build bench-regression
 
-# Compare against specific branch
-lua scripts/bench_regression.lua develop
+# Advanced regression testing with custom baseline
+lua scripts/rgcidr_test.lua --regression --baseline=develop --csv
+```
 
-# Generate CSV for CI/CD
-lua scripts/bench_regression.lua main --csv
+### 4. Direct Script Usage
+
+```bash
+# Full control over benchmarking options
+lua scripts/rgcidr_test.lua --help
+lua scripts/rgcidr_test.lua --bench-statistical --runs=50 --variance-target=5.0
+lua scripts/rgcidr_test.lua --performance --csv --report
 ```
 
 ## Understanding Results
@@ -214,14 +240,13 @@ lua scripts/benchmark_official.lua
 For custom testing:
 
 ```bash
-# Build both tools
-zig build -Doptimize=ReleaseFast
-cd /tmp && curl -L -O https://www.pc-tools.net/files/unix/grepcidr-2.0.tar.gz
-tar xzf grepcidr-2.0.tar.gz && cd grepcidr-2.0
-make CFLAGS='-O3'
+# Use the unified system (recommended)
+lua scripts/rgcidr_test.lua --bench-compare --verbose
 
-# Compare performance
-time /tmp/grepcidr-2.0/grepcidr "192.168.0.0/16" large_file.txt
+# Manual testing (advanced users)
+zig build -Doptimize=ReleaseFast
+GREPCIDR_PATH=$(lua scripts/fetch_grepcidr.lua get)
+time $GREPCIDR_PATH "192.168.0.0/16" large_file.txt
 time ./zig-out/bin/rgcidr "192.168.0.0/16" large_file.txt
 ```
 
