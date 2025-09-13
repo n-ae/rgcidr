@@ -117,7 +117,7 @@ jobs:
       run: |
         echo "Running comprehensive tests for release validation..."
         zig build test
-        zig build bench-realistic
+        zig build test-release
         echo "✅ All tests and benchmarks passed"
 
     - name: Generate release notes

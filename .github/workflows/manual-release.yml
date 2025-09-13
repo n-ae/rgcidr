@@ -55,7 +55,7 @@ jobs:
       run: |
         echo "🧪 Running comprehensive validation for release..."
         zig build test
-        zig build bench-realistic
+        zig build test-release
         echo "✅ All validation tests passed"
 
     - name: Build release artifacts
