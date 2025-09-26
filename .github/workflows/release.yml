@@ -120,7 +120,7 @@ jobs:
       run: |
         echo "Running comprehensive tests for release validation..."
         zig build test
-        zig build test-release
+        lua scripts/rgcidr_test.lua --unit --functional --quiet
         echo "✅ All tests and benchmarks passed"
 
     - name: Generate release notes
