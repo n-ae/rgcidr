@@ -66,6 +66,9 @@ jobs:
           - os: windows-latest
             target: x86_64-windows
             artifact: rgcidr-windows-x86_64.exe
+          - os: windows-latest
+            target: x86-windows
+            artifact: rgcidr-windows-i386.exe
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -182,6 +185,22 @@ jobs:
         echo "Generated release notes:"
         cat release_notes.md
 
+    - name: Generate checksums
+      run: |
+        echo "Generating SHA256 checksums..."
+        find artifacts -type f -name "rgcidr-*" | while read file; do
+          if [ -f "$file" ]; then
+            echo "Processing: $file"
+            sha256sum "$file" >> checksums.txt
+          fi
+        done
+        
+        # Clean up the paths in checksums.txt to show just filenames
+        sed -i 's|artifacts/[^/]*/||g' checksums.txt
+        
+        echo "Generated checksums.txt:"
+        cat checksums.txt
+
     - name: List artifacts for debugging
       run: |
         echo "Available artifacts:"
@@ -197,6 +216,7 @@ jobs:
         prerelease: false
         files: |
           artifacts/*/rgcidr-*
+          checksums.txt
         make_latest: true
         generate_release_notes: false
         fail_on_unmatched_files: false

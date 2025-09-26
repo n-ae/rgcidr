@@ -13,6 +13,24 @@ A high-performance Zig library and CLI tool for filtering IPv4 and IPv6 addresse
 
 ## Installation
 
+### Package Managers
+
+#### Windows (Scoop)
+```powershell
+scoop bucket add packages https://github.com/n-ae/packages
+scoop install rgcidr
+```
+
+#### macOS/Linux (Homebrew)
+```bash
+brew tap n-ae/packages
+brew install rgcidr
+```
+
+### Pre-built Binaries
+
+Download the latest release for your platform from [GitHub Releases](https://github.com/n-ae/rgcidr/releases).
+
 ### As a Zig Package (Library)
 
 Add to your `build.zig.zon`:
@@ -20,7 +38,7 @@ Add to your `build.zig.zon`:
 ```zig
 .dependencies = .{
     .rgcidr = .{
-        .url = "https://github.com/yourusername/rgcidr/archive/refs/tags/v0.1.0.tar.gz",
+        .url = "https://github.com/n-ae/rgcidr/archive/refs/tags/v0.1.0.tar.gz",
         .hash = "...", // Use `zig fetch --save` to get the hash
     },
 },
@@ -36,11 +54,11 @@ const rgcidr = b.dependency("rgcidr", .{
 exe.root_module.addImport("rgcidr", rgcidr.module("rgcidr"));
 ```
 
-### As a CLI Tool
+### Build from Source
 
 ```bash
 # Clone and build (always use ReleaseFast for optimal performance)
-git clone https://github.com/yourusername/rgcidr
+git clone https://github.com/n-ae/rgcidr
 cd rgcidr
 zig build -Doptimize=ReleaseFast
 

@@ -1,0 +1,29 @@
+{
+    "version": "0.1.0",
+    "description": "A high-performance Zig library and CLI tool for filtering IPv4 and IPv6 addresses against CIDR patterns",
+    "homepage": "https://github.com/yourusername/rgcidr",
+    "license": "MIT",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/yourusername/rgcidr/releases/download/v0.1.0/rgcidr-windows-x86_64.exe",
+            "hash": "SHA256_HASH_TO_BE_UPDATED",
+            "bin": [
+                ["rgcidr-windows-x86_64.exe", "rgcidr"]
+            ]
+        }
+    },
+    "checkver": {
+        "github": "https://github.com/yourusername/rgcidr"
+    },
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/yourusername/rgcidr/releases/download/v$version/rgcidr-windows-x86_64.exe",
+                "hash": {
+                    "url": "https://github.com/yourusername/rgcidr/releases/download/v$version/checksums.txt",
+                    "regex": "([a-fA-F0-9]{64})\\s+rgcidr-windows-x86_64.exe"
+                }
+            }
+        }
+    }
+}
